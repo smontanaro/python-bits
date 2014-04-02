@@ -2,7 +2,7 @@
 
 """
 An alternative config file parser written in response to the ConfigParser
-shootout: http://www.python.org/moin/ConfigParserShootout
+shootout: http://wiki.python.org/moin/ConfigParserShootout
 
 Author: Skip Montanaro (skip@pobox.com)
 
@@ -70,7 +70,7 @@ class Configuration:
         if key not in self.__values:
             self.__values.append(key)
     __setattr__ = __setitem__
-        
+
     def write(self, fp):
         for attr in self.__values:
             item = self[attr]
@@ -186,7 +186,7 @@ if __name__ == "__main__":
             self.assertEqual(cfg1, cfg2)
             cfg2['level1'] = "another val"
             self.assertNotEqual(cfg1, cfg2)
-            
+
         def test_get_item(self):
             self.assertEqual(Configuration(), Configuration())
             cfg = Configuration()
