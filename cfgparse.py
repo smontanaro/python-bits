@@ -34,7 +34,7 @@ Significant points:
 import cStringIO as StringIO
 import re
 
-class Configuration:
+class Configuration(object):
     def __init__(self):
         self.__dict__['_Configuration__values'] = []
 
@@ -123,7 +123,7 @@ class Configuration:
         return "<Configuration @ 0x%x>" % id(self)
     __repr__ = __str__
 
-class PushBackFile:
+class PushBackFile(object):
     def __init__(self, fp):
         self.fp = fp
         self.stack = []
@@ -172,9 +172,6 @@ class PushBackFile:
         return "".join(newline)
 
 if __name__ == "__main__":
-    import sys
-    sys.setrecursionlimit(40)
-
     import unittest
 
     class TestCase(unittest.TestCase):
@@ -222,31 +219,34 @@ if __name__ == "__main__":
             cfg['empty section1'] = Configuration()
             cfg['very last'] = "7"
             cfg.write(fp)
-            self.assertEqual(fp.getvalue(),
-                             ("level1 = new val\n"
-                              "section1:\n"
-                              "    item1 = item 1\n"
-                              "    subsection:\n"
-                              "        item2 = item 2\n"
-                              "section2:\n"
-                              "    subsection:\n"
-                              "        item3 = item 3\n"
-                              "empty section1:\n"
-                              "very last = 7\n"))
+            self.assertEqual(fp.getvalue(), """\
+level1 = new val
+section1:
+    item1 = item 1
+    subsection:
+        item2 = item 2
+section2:
+    subsection:
+        item3 = item 3
+empty section1:
+very last = 7
+""")
 
         def test_read(self):
-            fp = StringIO.StringIO("empty section1:\n"
-                                   "level1 = new val\n"
-                                   "section1:\n"
-                                   "# this is a comment for section1.item1:\n"
-                                   "    item1 = item 1\n"
-                                   "          # this is another comment\n"
-                                   "    subsection:  \n"
-                                   "        item2 = item 2\n"
-                                   "section2:\n"
-                                   "    subsection:\n"
-                                   "        item3 = item 3\n"
-                                   "very last = 7\n")
+            fp = StringIO.StringIO("""\
+empty section1:
+level1 = new val
+section1:
+# this is a comment for section1.item1:
+    item1 = item 1
+          # this is another comment
+    subsection:
+        item2 = item 2
+section2:
+    subsection:
+        item3 = item 3
+very last = 7
+""")
             cfg = Configuration()
             cfg.read(fp)
             self.assertEqual(cfg._Configuration__values,
@@ -262,16 +262,18 @@ if __name__ == "__main__":
             self.assertEqual(cfg['very last'], "7")
 
         def test_varying_indents(self):
-            fp = StringIO.StringIO("empty section1:\n"
-                                   "level1 = new val\n"
-                                   "section1:\n"
-                                   "\titem1 = item 1\n"
-                                   "\tsubsection:  \n"
-                                   "\t    item2 = item 2\n"
-                                   "section2:\n"
-                                   " subsection:\n"
-                                   " \titem3 = item 3\n"
-                                   "very last = 7\n")
+            fp = StringIO.StringIO("""\
+empty section1:
+level1 = new val
+section1:
+	item1 = item 1
+	subsection:
+	    item2 = item 2
+section2:
+ subsection:
+ 	item3 = item 3
+very last = 7
+""")
             cfg = Configuration()
             cfg.read(fp)
             self.assertEqual(cfg._Configuration__values,
