@@ -29,13 +29,18 @@ class Array:
             while len(row) < x:
                 row.append(" ")
         self.rows[oy][ox] = val
+
     def writecsv(self, stream):
         for row in self.rows:
             stream.write('"')
             stream.write('","'.join(row))
             stream.write('"\n')
         stream.flush()
-        
+
+    def __iter__(self):
+        for row in self.rows:
+            yield row
+
 class SYLK:
     """class to read SYLK files and dump to CSV"""
 
@@ -94,7 +99,7 @@ class SYLK:
         self.curx = self.cury = 0
         self.data = Array()
         self.unknown = {}
-        
+
     def escape(self,s):
         if s[0:1] == '"':
             return '"' + re.sub('"', '\\"\\"', s[1:-1]) + '"'
@@ -107,7 +112,7 @@ class SYLK:
 
     def writecsv(self, stream):
         self.data.writecsv(stream)
-        
+
     def addunknown(self,fld,subfld):
         self.unknown[fld] = self.unknown.get(fld, {})
         self.unknown[fld][subfld] = 1
@@ -120,7 +125,7 @@ class SYLK:
         else:
             stream.write("No unrecognized fields\n")
         stream.flush()
-        
+
     def parseline(self,line):
         fields = re.split("(?i);(?=[a-z])", line)
         if fields[0] == "ID":
@@ -193,3 +198,6 @@ class SYLK:
             for f in fields[1:]:
                 ftd = f[0]
                 self.addunknown(fld,f)
+
+    def __iter__(self):
+        return self.data.__iter__()
