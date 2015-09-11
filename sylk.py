@@ -19,7 +19,8 @@ class Array:
     """simple array representation of a spreadsheet grid"""
     def __init__(self):
         self.rows = []
-    def __setitem__(self, (x,y), val):
+    def __setitem__(self, xy_tuple, val):
+        (x, y) = xy_tuple
         ox = x - 1
         oy = y - 1
         while len(self.rows) < y:
@@ -28,13 +29,18 @@ class Array:
             while len(row) < x:
                 row.append(" ")
         self.rows[oy][ox] = val
+
     def writecsv(self, stream):
         for row in self.rows:
             stream.write('"')
-            stream.write(string.join(row, '","'))
+            stream.write('","'.join(row))
             stream.write('"\n')
         stream.flush()
-        
+
+    def __iter__(self):
+        for row in self.rows:
+            yield row
+
 class SYLK:
     """class to read SYLK files and dump to CSV"""
 
@@ -93,20 +99,20 @@ class SYLK:
         self.curx = self.cury = 0
         self.data = Array()
         self.unknown = {}
-        
+
     def escape(self,s):
         if s[0:1] == '"':
             return '"' + re.sub('"', '\\"\\"', s[1:-1]) + '"'
         return s
 
     def parse(self,stream):
-        lines = string.split(re.sub("[\r\n]+", "\n", stream.read()), "\n")
+        lines = re.sub("[\r\n]+", "\n", stream.read()).split("\n")
         for line in lines:
             self.parseline(line)
 
     def writecsv(self, stream):
         self.data.writecsv(stream)
-        
+
     def addunknown(self,fld,subfld):
         self.unknown[fld] = self.unknown.get(fld, {})
         self.unknown[fld][subfld] = 1
@@ -114,12 +120,12 @@ class SYLK:
     def writeunknown(self,stream):
         if self.unknown:
             stream.write("Unrecognized fields (subfields):\n")
-            for key in self.unknown.keys():
-                stream.write("%s (%s)\n" % (key, `self.unknown[key].keys()`))
+            for key in list(self.unknown.keys()):
+                stream.write("%s (%s)\n" % (key, repr(list(self.unknown[key].keys()))))
         else:
             stream.write("No unrecognized fields\n")
         stream.flush()
-        
+
     def parseline(self,line):
         fields = re.split("(?i);(?=[a-z])", line)
         if fields[0] == "ID":
@@ -149,7 +155,7 @@ class SYLK:
                     self.cury = int(val)
                 elif ftd == "K":
                     val = eval(self.escape(val))
-                    if type(val) == types.IntType:
+                    if type(val) == int:
                         if self.currenttype == "date":
                             # value is offset in days from datebase
                             date = time.localtime(time.mktime(self.datebase)+
@@ -161,8 +167,8 @@ class SYLK:
         elif fields[0] == "P":
             # print formats imply data types?
             if fields[1][0] == "P":
-                format = string.replace(fields[1][1:], "\\", "")
-                if self.knownformats.has_key(format):
+                format = fields[1][1:].replace("\\", "")
+                if format in self.knownformats:
                     self.printformats.append((format,
                                               self.knownformats[format]))
                 else:
@@ -192,3 +198,6 @@ class SYLK:
             for f in fields[1:]:
                 ftd = f[0]
                 self.addunknown(fld,f)
+
+    def __iter__(self):
+        return self.data.__iter__()
