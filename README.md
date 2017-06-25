@@ -6,7 +6,7 @@ used to be the index.html file for the Python section of that site. **If
 something looks a bit out-of-date, note the dates!**
 
 
-## ** [at(1) front end](at.py) ##
+## [at(1) front end](at.py) ##
 
 I use the at(1) command from time-to-time, and everything works well if I
 just need to run a command a bit in the future on the current day, e.g., "at
