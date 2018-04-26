@@ -6,7 +6,6 @@
 # $Id: watch.py,v 1.5 2000/06/18 03:42:24 skip Exp $
 
 # Updated for Python 3 2018/04/26
-
 """
 
 Watch is a Tk-based program that monitors work and rest times for
@@ -60,7 +59,9 @@ from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
 import arrow
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
-class Meter(Canvas):            # pylint: disable=too-many-ancestors
+
+
+class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """Progress meter widget.
 
     Adds two options to its Canvas base class, min and max, which define
@@ -101,22 +102,23 @@ class Meter(Canvas):            # pylint: disable=too-many-ancestors
     def set(self, value):
         if self.rect is not None:
             self.delete(self.rect)
-        metheight = int(self.cget("height"))+1
+        metheight = int(self.cget("height")) + 1
         canwidth = int(self.cget("width"))
-        metwidth = canwidth*(value-self.min)/(self.max-self.min)
-        self.rect = self.create_rectangle(0, 0, metwidth, metheight,
-                                          outline="red", fill="red")
+        metwidth = canwidth * (value - self.min) / (self.max - self.min)
+        self.rect = self.create_rectangle(
+            0, 0, metwidth, metheight, outline="red", fill="red")
         self.update()
 
     def reset(self):
         self.set(self.min)
 
-class Task(Frame):              # pylint: disable=too-many-ancestors
+
+class Task(Frame):  # pylint: disable=too-many-ancestors
     WORKING = 1
     RESTING = 0
     # needs to be 1000 so display update intervals are consistent when
     # resting
-    CHK_INT = 95                # milliseconds
+    CHK_INT = 95  # milliseconds
 
     # keyed by sys.platform or "default" to return a method that checks
     # for mouse/keyboard activity
@@ -145,7 +147,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         Frame.__init__(*(self, master))
 
         self.style = StringVar()
-        self.style.set("fascist")       # or "friendly"
+        self.style.set("fascist")  # or "friendly"
 
         # create main interactor window
         self.workmeter = Meter(self, background="grey50")
@@ -154,27 +156,33 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         f1 = Frame(self)
         f1.pack()
         Label(f1, text="Work time:").pack(side=LEFT)
-        self.work_scl = Scale(f1, orient=HORIZONTAL, from_=1,
-                              to=max(45, work),
-                              command=self.reset_duration)
+        self.work_scl = Scale(
+            f1,
+            orient=HORIZONTAL,
+            from_=1,
+            to=max(45, work),
+            command=self.reset_duration)
         self.work_scl.set(work)
         self.work_scl.pack(side=LEFT)
 
         f2 = Frame(self)
         f2.pack()
         Label(f2, text="Rest time:").pack(side=LEFT)
-        self.rest_scl = Scale(f2, orient=HORIZONTAL, from_=1,
-                              to=max(15, rest),
-                              command=self.reset_duration)
+        self.rest_scl = Scale(
+            f2,
+            orient=HORIZONTAL,
+            from_=1,
+            to=max(15, rest),
+            command=self.reset_duration)
         self.rest_scl.set(rest)
         self.rest_scl.pack(side=LEFT)
 
         f3 = Frame(self)
         f3.pack()
-        dictator = Radiobutton(f3, text="Fascist", variable=self.style,
-                               value="fascist")
-        friend = Radiobutton(f3, text="Friendly", variable=self.style,
-                             value="friendly")
+        dictator = Radiobutton(
+            f3, text="Fascist", variable=self.style, value="fascist")
+        friend = Radiobutton(
+            f3, text="Friendly", variable=self.style, value="friendly")
         dictator.pack(side=LEFT)
         friend.pack(side=LEFT)
 
@@ -195,7 +203,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         (w, h) = (self.winfo_screenwidth(), self.winfo_screenheight())
         if debug:
             # just a small window when debugging
-            (w, h) = (w//8, h//8)
+            (w, h) = (w // 8, h // 8)
         self.cover.geometry("%dx%d+0+0" % (w, h))
 
         # and it's undecorated
@@ -225,9 +233,9 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         """reset work/rest interval lengths to current scale values"""
         wtime = self.work_scl.get()
         self.workmeter.set_range(self.workmeter.min,
-                                 self.workmeter.min+wtime*60)
+                                 self.workmeter.min + wtime * 60)
         self.restmeter.set_range(self.restmeter.min,
-                                 self.restmeter.min+self.rest_scl.get()*60)
+                                 self.restmeter.min + self.rest_scl.get() * 60)
         # only time the user can fiddle the work/rest meters is during
         # the work phase, so the only scale change that matters for extending
         # or contracting the end of the interval is the work scale
@@ -278,10 +286,10 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         self.workmeter.reset()
         self.state = self.RESTING
         now = time.time()
-        self.then = now+self.rest_scl.get()*60
+        self.then = now + self.rest_scl.get() * 60
         self.cover.deiconify()
         self.cover.tkraise()
-        self.resttext = ("Rest for %dm00s please..."% self.rest_scl.get())
+        self.resttext = ("Rest for %dm00s please..." % self.rest_scl.get())
         self.restnote.configure(text=self.resttext)
         self.restmeter.set_range(now, self.then)
         self.restmeter.set(now)
@@ -297,11 +305,12 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         self.output.write("\n")
 
     def help_(self):
-        d = simpledialog.SimpleDialog(self.master,
-                                      text=usageText(),
-                                      buttons=["Done"],
-                                      default=0,
-                                      title="Help")
+        d = simpledialog.SimpleDialog(
+            self.master,
+            text=usageText(),
+            buttons=["Done"],
+            default=0,
+            title="Help")
         d.go()
 
     def get_interrupts(self):
@@ -313,8 +322,8 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         in all cases, the value returned should be a value that increases
         monotonically with activity
         """
-        count = (self.activity_dispatch.get(sys.platform) or
-                 self.activity_dispatch["default"])(self)
+        count = (self.activity_dispatch.get(sys.platform)
+                 or self.activity_dispatch["default"])(self)
         print("interrupts:", count, file=self.output)
         return count
 
@@ -329,6 +338,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
             self.mouse_pos = mouse_pos
             self.mouse_counts += 1
         return self.mouse_counts
+
     activity_dispatch["default"] = get_mouseinfo
 
     def get_linux_interrupts(self):
@@ -345,6 +355,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
                 self.interrupt_count = count
                 break
         return self.interrupt_count + self.get_mouseinfo()
+
     activity_dispatch["linux"] = get_linux_interrupts
 
     def check_lid_state(self):
@@ -401,8 +412,8 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
                 timeleft = int(self.then - now)
                 minleft = timeleft / 60
                 secleft = timeleft % 60
-                self.resttext = ("Rest for %dm%02ds please..."%
-                                 (minleft, secleft))
+                self.resttext = ("Rest for %dm%02ds please..." % (minleft,
+                                                                  secleft))
                 self.output.write(self.resttext)
                 self.output.write("\n")
                 self.restnote.configure(text=self.resttext)
@@ -414,7 +425,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         else:
             # if it's been at least the length of the rest interval
             # since new interrupt, reset the work interval
-            if self.interrupt_time + self.rest_scl.get()*60 < now:
+            if self.interrupt_time + self.rest_scl.get() * 60 < now:
                 self.work()
 
             if self.interrupt_time < now:
@@ -422,7 +433,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
                 # idle periods, so back off on the check interval to a
                 # maximum of once every five seconds as long as there is no
                 # activity
-                self.check_interval = int(min(self.check_interval*1.3, 5000))
+                self.check_interval = int(min(self.check_interval * 1.3, 5000))
             else:
                 self.check_interval = self.CHK_INT
 
@@ -444,8 +455,10 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
     def cancel(self):
         self.cancel_rest = 1
 
+
 def hhmm(t):
     return time.strftime("%H:%M:%S", time.localtime(t))
+
 
 def main(args):
     work, rest, geometry, debug = parse(args)
@@ -457,10 +470,12 @@ def main(args):
     task.pack()
     app.mainloop()
 
+
 def usage(name):
     print("Usage %s" % name)
     print(usageText())
     sys.exit()
+
 
 def usageText():
     return """\
@@ -489,14 +504,10 @@ end the current work interval.
 Author: Skip Montanaro (skip@mojam.com)
 """
 
+
 def parse(args):
-    opts = getopt.getopt(args[1:],
-                 "dhw:r:g:",
-                 ['debug',
-                  'help',
-                  'work=',
-                  'rest=',
-                  'geometry='])
+    opts = getopt.getopt(args[1:], "dhw:r:g:",
+                         ['debug', 'help', 'work=', 'rest=', 'geometry='])
     options = opts[0]
 
     # defaults
@@ -521,6 +532,7 @@ def parse(args):
         usage(args[0])
 
     return work, rest, geometry, debug
+
 
 if __name__ == "__main__":
     main(sys.argv)
