@@ -51,11 +51,15 @@ certainly in XEmacs 20.[34] and later versions.
 """
 
 import getopt
+import os
 import sys
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
 
+import arrow
+
+LID_STATE = "/proc/acpi/button/lid/LID0/state"
 class Meter(Canvas):            # pylint: disable=too-many-ancestors
     """Progress meter widget.
 
@@ -112,7 +116,7 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
     RESTING = 0
     # needs to be 1000 so display update intervals are consistent when
     # resting
-    CHK_INT = 1000              # milliseconds
+    CHK_INT = 95                # milliseconds
 
     # keyed by sys.platform or "default" to return a method that checks
     # for mouse/keyboard activity
@@ -129,6 +133,9 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         self.cancel_rest = 0
         self.resttext = ""
         self.mouse_counts = 0
+        self.lid_state = "open"
+        self.lid_time = time.time()
+        self.interrupt_count = 0
 
         if debug:
             self.output = sys.stderr
@@ -312,6 +319,8 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
         return count
 
     def get_mouseinfo(self):
+        if self.lid_state == "closed":
+            return self.mouse_counts
         ptr_xy = self.winfo_pointerxy()
         if self.mouse_pos is None:
             self.mouse_pos = ptr_xy
@@ -323,6 +332,8 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
     activity_dispatch["default"] = get_mouseinfo
 
     def get_linux_interrupts(self):
+        if self.lid_state == "closed":
+            return self.interrupt_count
         count = 0
         # Can't seem to find mouse interrupts, so for now, just watch
         # keyboard and mix add get_mouseinfo() output as a substitute for
@@ -331,14 +342,28 @@ class Task(Frame):              # pylint: disable=too-many-ancestors
             fields = line.split()
             if fields[0] == "1:":
                 count = sum(int(fields[n]) for n in range(1, 8))
+                self.interrupt_count = count
                 break
-        return count + self.get_mouseinfo()
+        return self.interrupt_count + self.get_mouseinfo()
     activity_dispatch["linux"] = get_linux_interrupts
+
+    def check_lid_state(self):
+        if os.path.exists(LID_STATE):
+            for line in open(LID_STATE):
+                fields = line.strip().split()
+                if fields[0] == "state:":
+                    state = fields[1]
+                    if state != self.lid_state:
+                        print(arrow.get(),
+                              "lid state changed: {state}".format(**locals()))
+                        self.lid_state = state
+                        self.lid_time = time.time()
 
     def tick(self):
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
         now = time.time()
+        self.check_lid_state()
         interrupts = self.get_interrupts()
         if interrupts > self.interrupts:
             self.interrupt_time = now
