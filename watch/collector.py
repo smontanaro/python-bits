@@ -14,13 +14,13 @@ class Collector:
     def get(self):
         now = self.now()
         if self.debug:
-            print >> sys.stderr, "idle: %.1f" % (now-self.time)
+            print("idle: %.1f" % (now-self.time), file=sys.stderr)
         return self.time, self.work, self.rest, now
 
     def tick(self):
         self.time = self.now()
         if self.debug:
-            print >> sys.stderr, "tick now: %.1f" % self.time
+            print("tick now: %.1f" % self.time, file=sys.stderr)
         return self.get()
 
     def save_scales(self, work, rest):

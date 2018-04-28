@@ -85,12 +85,12 @@ import getopt
 import time
 import string
 import re
-import xmlrpclib
+import xmlrpc.client
 import atexit
 import socket
 import signal
 
-from Tkinter import *
+from tkinter import *
 
 import collector
 
@@ -195,7 +195,7 @@ class Meter(Canvas):
         kw['height'] = kw.get('height', 10)
         kw['background'] = kw.get('background', "black")
         self.rect = None
-        apply(Canvas.__init__, (self, master), kw)
+        Canvas.__init__(*(self, master), **kw)
 
     def set_range(self, mn, mx):
         self.min = mn
@@ -227,13 +227,14 @@ class Task(Frame):
 
         self.lid_state = "open"
         self.lid_time = time.time()
+        self.interrupt_count = 0
 
         if debug:
             self.output = sys.stderr
         else:
             self.output = open("/dev/null", "w")
 
-        apply(Frame.__init__, (self, master))
+        Frame.__init__(*(self, master))
 
         self.style = StringVar()
         self.style.set("fascist")       # or "friendly"
@@ -327,13 +328,13 @@ class Task(Frame):
     def setup_server(self, server, port):
         if server is None:
             self.server = collector.Collector()
-            print >> self.output, "using private Collector()"
+            print("using private Collector()", file=self.output)
             return
 
-        self.server = xmlrpclib.ServerProxy("http://%s:%d" % (server, port))
+        self.server = xmlrpc.client.ServerProxy("http://%s:%d" % (server, port))
         try:
             self.server.get()
-            print >> self.output, "found existing server"
+            print("found existing server", file=self.output)
         except socket.error:
             if server in ["", "localhost", "127.0.0.1"]:
                 cmd = "watch-server.py"
@@ -341,20 +342,20 @@ class Task(Frame):
                 pid = os.spawnvp(os.P_NOWAIT, cmd, args)
                 # wait briefly for server to start
                 time.sleep(0.2)
-                self.server = xmlrpclib.ServerProxy("http://%s:%d" %
-                                                    (server, port))
+                self.server = xmlrpc.client.ServerProxy("http://%s:%d" %
+                                                        (server, port))
                 # try connecting
                 for i in range(10):
                     try:
                         self.server.get()
                         atexit.register(os.kill, pid, signal.SIGHUP)
-                        print >> self.output, "spawned server"
+                        print("spawned server", file=self.output)
                         return
                     except socket.error:
                         time.sleep(0.1)
             # nothing else worked, but use our own collector
             self.server = collector.Collector()
-            print >> self.output, "using private Collector()"
+            print("using private Collector()", file=self.output)
 
     def reset_duration(self, dummy=None):
         """reset work/rest interval lengths to current scale values"""
@@ -393,12 +394,12 @@ class Task(Frame):
         self.workmeter.set(self.now)
         self.cover.withdraw()
 
-        print >> self.output, "work:",
-        print >> self.output, "state:", self.which_state(),
-        print >> self.output, "now:", self.hhmm(self.now),
-        print >> self.output, "then:", self.hhmm(self.then),
-        print >> self.output, "int:", self.check_interval,
-        print >> self.output
+        print("work:", end=' ', file=self.output)
+        print("state:", self.which_state(), end=' ', file=self.output)
+        print("now:", self.hhmm(self.now), end=' ', file=self.output)
+        print("then:", self.hhmm(self.then), end=' ', file=self.output)
+        print("int:", self.check_interval, end=' ', file=self.output)
+        print(file=self.output)
         self.after(self.check_interval, self.tick)
 
     def warn_work_end(self):
@@ -440,12 +441,12 @@ class Task(Frame):
             self.cancel_button.pack_forget()
         self.after(self.check_interval, self.tick)
 
-        print >> self.output, "rest:",
-        print >> self.output, "state:", self.which_state(),
-        print >> self.output, "now:", self.hhmm(self.now),
-        print >> self.output, "then:", self.hhmm(self.then),
-        print >> self.output, "int:", self.check_interval,
-        print >> self.output
+        print("rest:", end=' ', file=self.output)
+        print("state:", self.which_state(), end=' ', file=self.output)
+        print("now:", self.hhmm(self.now), end=' ', file=self.output)
+        print("then:", self.hhmm(self.then), end=' ', file=self.output)
+        print("int:", self.check_interval, end=' ', file=self.output)
+        print(file=self.output)
 
     def help(self):
         d = Dialog(self.master, title="Help", content=usageText())
@@ -590,8 +591,8 @@ def main(args):
     app.mainloop()
 
 def usage():
-    print >> sys.stderr, "Usage %s" % sys.argv[0]
-    print >> sys.stderr, usageText()
+    print("Usage %s" % sys.argv[0], file=sys.stderr)
+    print(usageText(), file=sys.stderr)
     sys.exit()
 
 def usageText():

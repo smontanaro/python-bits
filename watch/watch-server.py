@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from SimpleXMLRPCServer import SimpleXMLRPCServer as RPCServer
-from SimpleXMLRPCServer import SimpleXMLRPCRequestHandler as RPCHandler
+from xmlrpc.server import SimpleXMLRPCServer as RPCServer
+from xmlrpc.server import SimpleXMLRPCRequestHandler as RPCHandler
 import socket
 import sys
 import getopt
