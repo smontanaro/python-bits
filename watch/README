@@ -1,0 +1,10 @@
+To run watch you need a recent version of Python with Tkinter.  To install,
+execute
+
+    python setup.py install
+
+Any questions?
+
+Skip Montanaro
+skip@pobox.com
+
