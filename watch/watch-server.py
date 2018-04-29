@@ -8,13 +8,15 @@ import getopt
 
 import collector
 
+
 class Server(RPCServer):
     def server_bind(self):
-        self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
-    
+
+
 def main():
-    opts, args = getopt.getopt(sys.argv[1:], "p:d", ['port=', 'debug'])
+    opts, _args = getopt.getopt(sys.argv[1:], "p:d", ['port=', 'debug'])
     port = 8080
     debug = False
     for opt, arg in opts:
@@ -31,6 +33,6 @@ def main():
     except (KeyboardInterrupt, SystemExit):
         pass
 
+
 if __name__ == "__main__":
     main()
-
