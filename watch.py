@@ -6,30 +6,36 @@
 # $Id: watch.py,v 1.5 2000/06/18 03:42:24 skip Exp $
 
 # Updated for Python 3 2018/04/26
-"""
+"""Usage: {PROG} [ -w min ] [ -r min ] [-g geometry ] [ -h ]
 
-Watch is a Tk-based program that monitors work and rest times for
-keyboard/mouse use to help users avoid overuse that can lead to or
-exacerbate repetitive strain injuries.  The user can define the duration of
-work and rest intervals.  In fascist mode, the user can't override the
-displayed rest window.  In friendly mode, a cancel button is available to
-allow the user to prematurely terminate the rest interval.
+--work=minutes - set work time in minutes (default: {WORK_TM})
+--rest=minutes - set rest time in minutes (default: {REST_TM})
+--geometry=geo - geometry in typical X fashion
 
-Watch currently runs on Linux systems.  At one point it was known
-to run on Windows.  It's never been tried on a Mac, but there isn't
-any insurmountable reason why it can't be made to work there either.
+Watch is a Tk-based program that monitors work and rest times for keyboard
+and mouse use to help users avoid overuse that can lead to or exacerbate
+repetitive strain injuries.  The user can define the duration of work and
+rest intervals.  In fascist mode, the user can't override the displayed rest
+window.  In friendly mode, a cancel button is available to allow the user to
+prematurely terminate the rest interval. The user interface includes a rest
+button to allow the user to immediately end the current work interval.
 
-Depending on the platform, activity of the mouse and possibly the keyboard
-is tracked.  Mouse position can be determined via Tk, but monitoring
-keyboard activity is not currently possible in a platform-independent way.
+Activity of the mouse and possibly the keyboard is tracked.  Mouse position
+can be determined via Tk, but monitoring keyboard activity is not currently
+possible in a platform-independent way. During the work interval, if no
+activity is sensed for at least the duration of the rest interval, the work
+interval is reset and the user can continue working.  It is not always
+possible to track keystrokes, but in these days of graphical user
+interfaces, it is unlikely the mouse will stay put for long if the user is
+actively using the computer.
 
 If no direct detection of keyboard activity is possible on your platform but
 you have Emacs available, you can add an auto-save-hook that jiggles the
 pointer by a few pixels so the typing watcher will notice the activity.  It
 toggles the jiggle direction so that the next time it jiggles the mouse the
-other way.  The following code uses mouse-pixel-position and
-set-mouse-pixel-position.  I'm not sure if they are in FSF Emacs.  They are
-certainly in XEmacs 20.[34] and later versions.
+other way.  The following code uses set-mouse-pixel-position and
+mouse-pixel-position which are both available in recent versions of GNU
+Emacs and XEmacs.
 
     (setq pointer-jiggle-val 3)
     (defun jiggle-mouse ()
@@ -46,20 +52,22 @@ certainly in XEmacs 20.[34] and later versions.
                     (setq pointer-jiggle-val (* -1 pointer-jiggle-val))))))))
 
     (setq auto-save-hook '(jiggle-mouse))
+    (setq after-save-hook '(jiggle-mouse))
 
 """
 
 import getopt
+import logging
 import os
 import sys
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
 
-import arrow
-
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
-
+WORK_TM = 10
+REST_TM = 3
+PROG = os.path.split(sys.argv[0])[-1]
 
 class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """Progress meter widget.
@@ -76,6 +84,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """
 
     def __init__(self, master=None, **kw):
+        self.log = logging.getLogger(__name__)
         self.min = 0
         self.max = 100
         if "min" in kw:
@@ -124,10 +133,11 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     # for mouse/keyboard activity
     activity_dispatch = {}
 
-    def __init__(self, master=None, work=10, rest=3, debug=0):
+    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, debug=0):
         """create the task widget and get things started"""
 
         # various inits
+        self.log = logging.getLogger(__name__)
         self.mouse_pos = None
         self.old_work = 0.0
         self.then = 0
@@ -138,11 +148,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.lid_state = "open"
         self.lid_time = time.time()
         self.interrupt_count = 0
-
-        if debug:
-            self.output = sys.stderr
-        else:
-            self.output = open("/dev/null", "w")
 
         Frame.__init__(*(self, master))
 
@@ -243,8 +248,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             delta = wtime - self.old_work
         else:
             delta = 0
-            self.then += delta * 60
-            self.old_work = wtime
+        self.then += delta * 60
+        self.old_work = wtime
 
     #uncomment for Python 1.4
     #def winfo_pointerxy(self):
@@ -266,19 +271,24 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.workmeter.set(now)
         self.cover.withdraw()
 
-        self.output.write("work:")
-        self.output.write(" state: %s" % self.which_state())
-        self.output.write(" now: %s" % hhmm(now))
-        self.output.write(" then: %s" % hhmm(self.then))
-        self.output.write("\n")
+        self.log.debug(__("work: state: {} now: {} then: {}",
+                          self.which_state(), hhmm(now), hhmm(self.then)))
 
     def warn_work_end(self):
         """alert user that work period is almost up"""
-        self["background"] = "yellow"
+        self.set_background("yellow")
 
     def reset_warning(self):
         """back to plain old grey bg"""
-        self["background"] = self.bgcolor
+        self.set_background(self.bgcolor)
+
+    def set_background(self, color):
+        for w in (self, self.work_scl, self.rest_scl, self.dictator,
+                  self.friend, self.button_frame, self.stopb, self.restb,
+                  self.helpb, self.work_frame, self.rest_frame,
+                  self.radio_frame, self.work_label, self.rest_label,
+                  self.meter_label, self.meter_frame):
+            w["background"] = color
 
     def rest(self):
         """overlay the screen with a window, preventing typing"""
@@ -298,11 +308,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         else:
             self.cancel_button.pack_forget()
 
-        self.output.write("rest:")
-        self.output.write(" state: %s" % self.which_state())
-        self.output.write(" now: %s" % hhmm(now))
-        self.output.write(" then: %s" % hhmm(self.then))
-        self.output.write("\n")
+        self.log.debug(__("rest: state: {} now: {} then: {}",
+                          self.which_state(), hhmm(now), hhmm(self.then)))
 
     def help_(self):
         d = simpledialog.SimpleDialog(
@@ -324,7 +331,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         """
         count = (self.activity_dispatch.get(sys.platform)
                  or self.activity_dispatch["default"])(self)
-        print("interrupts:", count, file=self.output)
+        self.log.debug(__("interrupts: {}", count))
         return count
 
     def get_mouseinfo(self):
@@ -365,8 +372,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 if fields[0] == "state:":
                     state = fields[1]
                     if state != self.lid_state:
-                        print(arrow.get(),
-                              "lid state changed: {state}".format(**locals()))
+                        self.log.debug(__("lid state changed: {}", state))
                         self.lid_state = state
                         self.lid_time = time.time()
 
@@ -380,11 +386,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.interrupt_time = now
             self.interrupts = interrupts
 
-            self.output.write("tick (1):")
-            self.output.write(" state: %s" % self.which_state())
-            self.output.write(" now: %s" % hhmm(now))
-            self.output.write(" then: %s" % hhmm(self.then))
-            self.output.write("\n")
+            self.log.debug(__("tick (1): state: {} now: {} then: {}",
+                              self.which_state(), hhmm(now), hhmm(self.then)))
 
         if self.state == self.RESTING:
             # if there is an input interrupt since the start of the rest
@@ -395,12 +398,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.restmeter.set(now)
                 self.interrupt_time = self.restmeter.min
 
-                self.output.write("tick (2): ")
-                self.output.write(" state: %s" % self.which_state())
-                self.output.write(" start: %s" % hhmm(self.restmeter.min))
-                self.output.write(" now: %s" % hhmm(now))
-                self.output.write(" then: %s" % hhmm(self.then))
-                self.output.write("\n")
+                self.log.debug(__("tick (2): state: {} start: {}"
+                                  " now: {} then: {}",
+                                  self.which_state(), hhmm(self.restmeter.min),
+                                  hhmm(now), hhmm(self.then)))
 
             if self.cancel_rest or now > self.then:
                 self.state = self.WORKING
@@ -414,13 +415,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 secleft = timeleft % 60
                 self.resttext = ("Rest for %dm%02ds please..." % (minleft,
                                                                   secleft))
-                self.output.write(self.resttext)
-                self.output.write("\n")
+                self.log.debug(self.resttext)
                 self.restnote.configure(text=self.resttext)
 
-                self.output.write("tick (4):")
-                self.output.write(" state: %s" % self.which_state())
-                self.output.write("\n")
+                self.log.debug(__("tick (4): state: {}", self.which_state()))
 
         else:
             # if it's been at least the length of the rest interval
@@ -455,13 +453,28 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def cancel(self):
         self.cancel_rest = 1
 
+class BraceMessage:
+    def __init__(self, fmt, *args, **kwargs):
+        self.fmt = fmt
+        self.args = args
+        self.kwargs = kwargs
+
+    def __str__(self):
+        return self.fmt.format(*self.args, **self.kwargs)
+__ = BraceMessage
 
 def hhmm(t):
     return time.strftime("%H:%M:%S", time.localtime(t))
 
 
+FORMAT = '{asctime} {levelname} {message}'
 def main(args):
     work, rest, geometry, debug = parse(args)
+    logging.basicConfig(
+        level="DEBUG" if debug else "INFO",
+        style='{',
+        format=FORMAT
+    )
     app = Tk()
     app.title("Typing Watcher")
     if geometry:
@@ -472,38 +485,13 @@ def main(args):
 
 
 def usage(name):
-    print("Usage %s" % name)
-    print(usageText())
+    print("Usage", name, file=sys.stderr)
+    print(usageText(), file=sys.stderr)
     sys.exit()
 
 
 def usageText():
-    return """\
-[-h] or [--help] for help
-[--work = time in minutes]
-[--rest = time in minutes]
-[--geometry = startup geometry]
-
-Watch sets work and rest times for keyboard/mouse use.  The user can
-define duration of work and rest intervals.  The default work time is ten
-minutes and the default rest time is three minutes. The work time must be
-greater than the rest time.  In fascist mode, the user can't override
-the displayed rest window.  In friendly mode, a cancel button is available
-to allow the user to prematurely terminate the rest interval.
-
-Activity of the mouse and possibly the keyboard is tracked.  During the work
-interval, if no activity is sensed for at least the duration of the rest
-interval, the work interval is reset and the user can continue working.  It
-is not always possible to track keystrokes, but in these days of graphical
-user interfaces, it is unlikely the mouse will stay put for long if the user
-is actively using the computer.
-
-The user interface includes a rest button to allow the user to immediately
-end the current work interval.
-
-Author: Skip Montanaro (skip@mojam.com)
-"""
-
+    return __doc__.format(**globals())
 
 def parse(args):
     opts = getopt.getopt(args[1:], "dhw:r:g:",
