@@ -4,7 +4,6 @@
 # Author: Skip Montanaro (skip@pobox.com)
 # $Id: watch.py,v 1.12 2002/12/14 18:13:17 montanaro Exp $
 # project home - http://sourceforge.net/projects/watch/
-
 """
 Command line arguments:
 
@@ -25,7 +24,7 @@ rest intervals.  In fascist mode, the user can't override the displayed rest
 window.  In friendly mode, a cancel button is available to allow the user to
 prematurely terminate the rest interval.
 
-Watch currently runs on Linux, Windows and MacOSX systems as long as Tkinter
+Watch currently runs on Linux, Windows and MacOSX systems as long as tkinter
 is available.  It's never been tried on MacOS 9, but there isn't any
 insurmountable reason why it can't be made to work there either.
 
@@ -79,26 +78,27 @@ Author: Skip Montanaro (skip@pobox.com)
 Project Home: http://sourceforge.net/projects/watch/
 """
 
-import os
-import sys
-import getopt
-import time
-import string
-import re
-import xmlrpc.client
 import atexit
-import socket
+import getopt
+import os
 import signal
-
-from tkinter import *
+import socket
+import sys
+import time
+from tkinter import (Toplevel, Canvas, Frame, Scale, Radiobutton, Button,
+                     Scrollbar, StringVar, Label, Text, Tk,
+                     RIGHT, LEFT, BOTH, HORIZONTAL, Y, NORMAL, END,
+                     ACTIVE, DISABLED)
+import xmlrpc.client
 
 import collector
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
 
+
 ### dialog support class adapted from Fredrik Lundh's Tkinter docs
 class Dialog(Toplevel):
-    def __init__(self, parent, title = None, content=""):
+    def __init__(self, parent, title=None, content=""):
         Toplevel.__init__(self, parent)
         self.transient(parent)
 
@@ -109,34 +109,31 @@ class Dialog(Toplevel):
 
         self.result = None
 
-        body = Frame(self)
-        self.initial_focus = self.body(body, content)
-        body.pack(padx=5, pady=5)
+        self.body = Frame(self)
+        self.fill_body(content)
+        self.body.pack(padx=5, pady=5)
 
         self.buttonbox()
 
         self.grab_set()
 
-        if not self.initial_focus:
-            self.initial_focus = self
-
         self.protocol("WM_DELETE_WINDOW", self.ok)
 
-        self.geometry("+%d+%d" % (parent.winfo_rootx()+50,
-                                  parent.winfo_rooty()+50))
+        self.geometry("+%d+%d" % (parent.winfo_rootx() + 50,
+                                  parent.winfo_rooty() + 50))
 
-        self.initial_focus.focus_set()
+        self.focus_set()
 
         self.wait_window(self)
 
     #
     # construction hooks
 
-    def body(self, master, content):
-        scrollbar = Scrollbar(master)
+    def fill_body(self, content):
+        scrollbar = Scrollbar(self.body)
         scrollbar.pack(side=RIGHT, fill=Y)
 
-        text = Text(master, yscrollcommand=scrollbar.set)
+        text = Text(self.body, yscrollcommand=scrollbar.set)
         text.pack(side=LEFT, fill=BOTH)
         text.config(state=NORMAL)
         text.delete(1.0, END)
@@ -159,7 +156,7 @@ class Dialog(Toplevel):
 
         box.pack()
 
-    def ok(self, event=None):
+    def ok(self, _event=None):
         self.withdraw()
         self.update_idletasks()
         self.parent.focus_set()
@@ -204,30 +201,41 @@ class Meter(Canvas):
     def set(self, value):
         if self.rect is not None:
             self.delete(self.rect)
-        metheight = int(self.cget("height"))+1
+        metheight = int(self.cget("height")) + 1
         canwidth = int(self.cget("width"))
-        metwidth = canwidth*(value-self.min)/(self.max-self.min)
-        self.rect = self.create_rectangle(0, 0, metwidth, metheight,
-                                          outline="red", fill="red")
+        metwidth = canwidth * (value - self.min) / (self.max - self.min)
+        self.rect = self.create_rectangle(
+            0, 0, metwidth, metheight, outline="red", fill="red")
         self.update()
 
     def reset(self):
         self.set(self.min)
+
 
 class Task(Frame):
     WORKING = 1
     RESTING = 0
     # needs to be 1000 so display update intervals are consistent when
     # resting
-    CHK_INT = 1000              # milliseconds
+    CHK_INT = 1000  # milliseconds
 
-    def __init__(self, master=None, work=20, rest=3, debug=0,
-                 server="localhost", port=8180):
+    def __init__(self,
+                 master=None,
+                 work=20,
+                 rest=3,
+                 debug=0,
+                 server="localhost",
+                 port=8180):
         """create the task widget and get things started"""
 
         self.lid_state = "open"
         self.lid_time = time.time()
         self.interrupt_count = 0
+        self.then = 0.0
+        self.old_work = 0.0
+        self.state = "working"
+        self.cancel_rest = 0
+        self.resttext = ""
 
         if debug:
             self.output = sys.stderr
@@ -237,7 +245,7 @@ class Task(Frame):
         Frame.__init__(*(self, master))
 
         self.style = StringVar()
-        self.style.set("fascist")       # or "friendly"
+        self.style.set("fascist")  # or "friendly"
 
         # create main interactor window
         self.workmeter = Meter(self, background="grey50")
@@ -247,9 +255,12 @@ class Task(Frame):
         self.work_frame.pack()
         self.work_label = Label(self.work_frame, text="Work time:")
         self.work_label.pack(side=LEFT)
-        self.work_scl = Scale(self.work_frame, orient=HORIZONTAL, from_=1,
-                              to=max(45, work),
-                              command=self.reset_duration)
+        self.work_scl = Scale(
+            self.work_frame,
+            orient=HORIZONTAL,
+            from_=1,
+            to=max(45, work),
+            command=self.reset_duration)
         self.work_scl.set(work)
         self.work_scl.pack(side=LEFT)
 
@@ -257,18 +268,27 @@ class Task(Frame):
         self.rest_frame.pack()
         self.rest_label = Label(self.rest_frame, text="Rest time:")
         self.rest_label.pack(side=LEFT)
-        self.rest_scl = Scale(self.rest_frame, orient=HORIZONTAL, from_=1,
-                              to=max(15, rest),
-                              command=self.reset_duration)
+        self.rest_scl = Scale(
+            self.rest_frame,
+            orient=HORIZONTAL,
+            from_=1,
+            to=max(15, rest),
+            command=self.reset_duration)
         self.rest_scl.set(rest)
         self.rest_scl.pack(side=LEFT)
 
         self.radio_frame = Frame(self)
         self.radio_frame.pack()
-        self.dictator = Radiobutton(self.radio_frame, text="Fascist",
-                                    variable=self.style, value="fascist")
-        self.friend = Radiobutton(self.radio_frame, text="Friendly",
-                                  variable=self.style, value="friendly")
+        self.dictator = Radiobutton(
+            self.radio_frame,
+            text="Fascist",
+            variable=self.style,
+            value="fascist")
+        self.friend = Radiobutton(
+            self.radio_frame,
+            text="Friendly",
+            variable=self.style,
+            value="friendly")
         self.dictator.pack(side=LEFT)
         self.friend.pack(side=LEFT)
 
@@ -286,11 +306,11 @@ class Task(Frame):
         self.cover.withdraw()
         # user can't resize it
         self.cover.resizable(0, 0)
-        (w,h) = (self.winfo_screenwidth(),self.winfo_screenheight())
+        (w, h) = (self.winfo_screenwidth(), self.winfo_screenheight())
         if debug:
             # just a small window when debugging
-            w,h = (w/5,h/5)
-        self.cover.geometry("%dx%d+0+0"%(w,h))
+            w, h = (w / 5, h / 5)
+        self.cover.geometry("%dx%d+0+0" % (w, h))
 
         # and it's undecorated
         self.cover.overrideredirect(1)
@@ -314,10 +334,8 @@ class Task(Frame):
         # self.last_int is the last time the server was alerted to activity
         # self.now is the server's notion of the current time
         # idle time is therefore max(0, self.now-self.last_int)
-        (self.last_int,
-         w_time, r_time,
-         self.now) = self.server.get()
-        self.idle = max(0, self.now-self.last_int)
+        (self.last_int, _w_time, _r_time, self.now) = self.server.get()
+        self.idle = max(0, self.now - self.last_int)
 
         self.bgcolor = self["background"]
 
@@ -331,21 +349,22 @@ class Task(Frame):
             print("using private Collector()", file=self.output)
             return
 
-        self.server = xmlrpc.client.ServerProxy("http://%s:%d" % (server, port))
+        self.server = xmlrpc.client.ServerProxy("http://%s:%d" % (server,
+                                                                  port))
         try:
             self.server.get()
             print("found existing server", file=self.output)
         except socket.error:
             if server in ["", "localhost", "127.0.0.1"]:
                 cmd = "watch-server.py"
-                args = ["-p", "%d"%port]
+                args = ["-p", "%d" % port]
                 pid = os.spawnvp(os.P_NOWAIT, cmd, args)
                 # wait briefly for server to start
                 time.sleep(0.2)
-                self.server = xmlrpc.client.ServerProxy("http://%s:%d" %
-                                                        (server, port))
+                self.server = xmlrpc.client.ServerProxy(
+                    "http://%s:%d" % (server, port))
                 # try connecting
-                for i in range(10):
+                for _i in range(10):
                     try:
                         self.server.get()
                         atexit.register(os.kill, pid, signal.SIGHUP)
@@ -357,13 +376,13 @@ class Task(Frame):
             self.server = collector.Collector()
             print("using private Collector()", file=self.output)
 
-    def reset_duration(self, dummy=None):
+    def reset_duration(self, _dummy=None):
         """reset work/rest interval lengths to current scale values"""
         wtime = self.work_scl.get()
         self.workmeter.set_range(self.workmeter.min,
-                                 self.workmeter.min+wtime*60)
+                                 self.workmeter.min + wtime * 60)
         self.restmeter.set_range(self.restmeter.min,
-                                 self.restmeter.min+self.rest_scl.get()*60)
+                                 self.restmeter.min + self.rest_scl.get() * 60)
         # only time the user can fiddle the work/rest meters is during
         # the work phase, so the only scale change that matters for extending
         # or contracting the end of the interval is the work scale
@@ -371,16 +390,13 @@ class Task(Frame):
             delta = wtime - self.old_work
         except AttributeError:
             delta = 0
-        self.then = self.then + delta*60
+        self.then = self.then + delta * 60
         self.old_work = wtime
 
         self.server.save_scales(self.work_scl.get(), self.rest_scl.get())
 
     def which_state(self):
-        return self.state == self.WORKING and "working" or "resting"
-
-    def hhmm(self, t):
-        return time.strftime("%H:%M:%S", time.localtime(t))
+        return "working" if self.state == self.WORKING else "resting"
 
     def work(self):
         """start the work period"""
@@ -389,15 +405,15 @@ class Task(Frame):
         self.reset_warning()
         self.restmeter.reset()
         self.state = self.WORKING
-        self.then = self.now + self.work_scl.get()*60
+        self.then = self.now + self.work_scl.get() * 60
         self.workmeter.set_range(self.now, self.then)
         self.workmeter.set(self.now)
         self.cover.withdraw()
 
         print("work:", end=' ', file=self.output)
         print("state:", self.which_state(), end=' ', file=self.output)
-        print("now:", self.hhmm(self.now), end=' ', file=self.output)
-        print("then:", self.hhmm(self.then), end=' ', file=self.output)
+        print("now:", hhmm(self.now), end=' ', file=self.output)
+        print("then:", hhmm(self.then), end=' ', file=self.output)
         print("int:", self.check_interval, end=' ', file=self.output)
         print(file=self.output)
         self.after(self.check_interval, self.tick)
@@ -426,12 +442,12 @@ class Task(Frame):
         # the user may not have been typing or mousing right up to the
         # work/rest threshold - give credit for whatever rest time has
         # already been accumulated
-        resttime = self.rest_scl.get()*60 - (self.now - self.last_int)
+        resttime = self.rest_scl.get() * 60 - (self.now - self.last_int)
         mins, secs = divmod(resttime, 60)
         self.then = self.now + resttime
         self.cover.deiconify()
         self.cover.tkraise()
-        self.resttext = ("Rest for %dm%02ds please..."% (mins, secs))
+        self.resttext = ("Rest for %dm%02ds please..." % (mins, secs))
         self.restnote.configure(text=self.resttext)
         self.restmeter.set_range(self.now, self.then)
         self.restmeter.set(self.now)
@@ -443,18 +459,19 @@ class Task(Frame):
 
         print("rest:", end=' ', file=self.output)
         print("state:", self.which_state(), end=' ', file=self.output)
-        print("now:", self.hhmm(self.now), end=' ', file=self.output)
-        print("then:", self.hhmm(self.then), end=' ', file=self.output)
+        print("now:", hhmm(self.now), end=' ', file=self.output)
+        print("then:", hhmm(self.then), end=' ', file=self.output)
         print("int:", self.check_interval, end=' ', file=self.output)
         print(file=self.output)
 
     def help(self):
-        d = Dialog(self.master, title="Help", content=usageText())
+        Dialog(self.master, title="Help", content=usageText())
 
     ### ---- define activity checkers here ---- ###
     # keyed by sys.platform or "default" to return a method that checks
     # for mouse/keyboard activity
     _dispatch = {}
+
     def check_activity(self):
         """check mouse/keyboard activity info
 
@@ -478,6 +495,7 @@ class Task(Frame):
             self.mouse = mouse
             return True
         return False
+
     _dispatch["default"] = check_mouse
 
     def get_linux_interrupts(self):
@@ -493,6 +511,7 @@ class Task(Frame):
                 self.interrupt_count = count
                 break
         return self.interrupt_count > last_count
+
     _dispatch["linux"] = get_linux_interrupts
 
     def check_lid_state(self):
@@ -502,7 +521,7 @@ class Task(Frame):
                 if fields[0] == "state:":
                     state = fields[1]
                     if state != self.lid_state:
-                        self.log.debug(__("lid state changed: {}", state))
+                        print("lid state changed: {}".format(state), file=self.output)
                         self.lid_state = state
                         self.lid_time = time.time()
 
@@ -510,20 +529,20 @@ class Task(Frame):
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
         self.check_activity()
-        self.last_int,work_time,rest_time, self.now = self.server.get()
+        self.last_int, work_time, rest_time, self.now = self.server.get()
         idle = max(0, self.now - self.last_int)
 
         # check to see if the work/rest scales got adjusted by another
         # watch instance
-        if (self.work_scl.get() != work_time or
-            self.rest_scl.get() != rest_time):
+        if (self.work_scl.get() != work_time
+                or self.rest_scl.get() != rest_time):
             self.work_scl.set(work_time)
             self.rest_scl.set(rest_time)
 
         if self.state == self.RESTING:
             # user explicitly cancelled the rest or the idle period
             # exceeded the desired rest time
-            if self.cancel_rest or idle > rest_time*60:
+            if self.cancel_rest or idle > rest_time * 60:
                 self.work()
                 return
 
@@ -541,14 +560,14 @@ class Task(Frame):
             # update message to reflect rest time remaining
             timeleft = int(round(self.then - self.now))
             minleft, secleft = divmod(timeleft, 60)
-            self.resttext = ("Rest for %dm%02ds please..."%
-                             (minleft, secleft))
+            self.resttext = ("Rest for %dm%02ds please..." % (minleft,
+                                                              secleft))
             self.restnote.configure(text=self.resttext)
 
         else:
             # if it's been at least the length of the rest interval
             # since last interrupt, reset the work interval
-            if idle >= rest_time*60:
+            if idle >= rest_time * 60:
                 self.work()
                 return
 
@@ -556,7 +575,7 @@ class Task(Frame):
                 # work interval can extend for long periods of time during
                 # idle periods, so back off on the check interval to at most
                 # five seconds as long as there is no activity
-                self.check_interval = int(min(self.check_interval*1.3, 5000))
+                self.check_interval = int(min(self.check_interval * 1.3, 5000))
             else:
                 self.check_interval = self.CHK_INT
             self.idle = idle
@@ -579,36 +598,41 @@ class Task(Frame):
     def cancel(self):
         self.cancel_rest = 1
 
+def hhmm(t):
+    return time.strftime("%H:%M:%S", time.localtime(t))
+
 def main(args):
     work, rest, geometry, debug, server, port = parse(args)
     app = Tk()
     app.title("Typing Watcher")
     if geometry:
         app.geometry(geometry)
-    task = Task(master=app, work=work, rest=rest, debug=debug,
-                server=server, port=port)
+    task = Task(
+        master=app,
+        work=work,
+        rest=rest,
+        debug=debug,
+        server=server,
+        port=port)
     task.pack()
     app.mainloop()
+
 
 def usage():
     print("Usage %s" % sys.argv[0], file=sys.stderr)
     print(usageText(), file=sys.stderr)
     sys.exit()
 
+
 def usageText():
     return __doc__
 
+
 def parse(args):
-    opts, args = getopt.getopt(args,
-                 "ndhw:r:g:s:p:",
-                 ['debug',
-                  'help',
-                  'noserver',
-                  'server=',
-                  'port=',
-                  'work=',
-                  'rest=',
-                  'geometry='])
+    opts, args = getopt.getopt(args, "ndhw:r:g:s:p:", [
+        'debug', 'help', 'noserver', 'server=', 'port=', 'work=', 'rest=',
+        'geometry='
+    ])
 
     # defaults
     work = 20.0
@@ -624,9 +648,9 @@ def parse(args):
         elif opt in ['-d', '--debug']:
             debug = 1
         elif opt in ['-w', '--work']:
-            work = string.atof(val)
+            work = float(val)
         elif opt in ['-r', '--rest']:
-            rest = string.atof(val)
+            rest = float(val)
         elif opt in ['-g', '--geometry']:
             geometry = val
         elif opt in ['-s', '--server']:
@@ -640,6 +664,7 @@ def parse(args):
         usage()
 
     return work, rest, geometry, debug, server, port
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
