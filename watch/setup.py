@@ -1,12 +1,12 @@
-from distutils.core import setup
+from setuptools import setuptools
 
-setup(
+setuptools.setup(
     name="watch",
-    version="1.0",
+    version="1.1",
     maintainer="Skip Montanaro",
     maintainer_email="skip.montanaro@gmail.com",
     description="Typing Watcher",
-    url="http://sourceforge.net/projects/watch",
-    py_modules=['collector'],
-    scripts=['watch.py', 'watch-server.py'],
+    url="https://github.com/smontanaro/python-bits/watch",
+    packages=['watch'],
+    scripts=['src/watch.py', 'src/watch-server.py'],
 )

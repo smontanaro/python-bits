@@ -92,7 +92,7 @@ from tkinter import (Toplevel, Canvas, Frame, Scale, Radiobutton, Button,
                      ACTIVE, DISABLED)
 import xmlrpc.client
 
-import collector
+from watch import collector
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
 WORK_TM = 10

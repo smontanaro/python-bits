@@ -6,7 +6,7 @@ import socket
 import sys
 import getopt
 
-import collector
+from watch import collector
 
 
 class Server(RPCServer):
