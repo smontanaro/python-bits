@@ -8,5 +8,5 @@ setuptools.setup(
     description="Typing Watcher",
     url="https://github.com/smontanaro/python-bits/watch",
     packages=['watch'],
-    scripts=['src/watch.py', 'src/watch-server.py'],
+    scripts=['src/watchapp.py', 'src/watch-server.py'],
 )
