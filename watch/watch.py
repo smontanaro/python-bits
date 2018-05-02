@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 
 # watch.py - keep an eye on the display and tell the user when to rest
-# Author: Skip Montanaro (skip@pobox.com)
+# Author: Skip Montanaro (skip.montanaro@gmail.com)
 # $Id: watch.py,v 1.12 2002/12/14 18:13:17 montanaro Exp $
 # project home - http://sourceforge.net/projects/watch/
-"""
+"""Usage: {PROG} [ args ]
 Command line arguments:
 
-    short       long            meaning                             default
-    -----       ----            -------                             -------
-     -h         --help          display this help                       n/a
-     -w n       --work=n        set work time in minutes                 20
-     -r n       --rest=n        set rest time in minutes                  3
-     -s name    --server=name   set server host                   localhost
-     -p n       --port=n        set server port                        8080
-     -g gspec   --geometry=g    set startup geometry          sys-dependent
+    short       long            meaning                      default
+    -----       ----            -------                      -------
+     -h         --help          display this help            n/a
+     -w n       --work=n        set work time in minutes     {WORK_TM}
+     -r n       --rest=n        set rest time in minutes     {REST_TM}
+     -s name    --server=name   set server host              localhost
+     -p n       --port=n        set server port              8080
+     -g gspec   --geometry=g    set startup geometry         sys-dependent
      -n         --noserver      don't contact or start server
 
 Watch is a Tk-based program that monitors work and rest times for keyboard
@@ -74,12 +74,13 @@ in FSF Emacs.  They are certainly in XEmacs from at least version 20.3.
     (setq auto-save-hook '(jiggle-mouse))
     (setq after-save-hook '(jiggle-mouse))
 
-Author: Skip Montanaro (skip@pobox.com)
-Project Home: http://sourceforge.net/projects/watch/
+Author: Skip Montanaro (skip.montanaro@gmail.com)
+Project Home: https://github.com/smontanaro/python-bits/
 """
 
 import atexit
 import getopt
+import logging
 import os
 import signal
 import socket
@@ -94,6 +95,12 @@ import xmlrpc.client
 import collector
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
+WORK_TM = 10
+REST_TM = 3
+PORT = 8080
+HOST = "localhost"
+FORMAT = '{asctime} {levelname} {message}'
+PROG = os.path.split(sys.argv[0])[-1]
 
 
 ### dialog support class adapted from Fredrik Lundh's Tkinter docs
@@ -101,6 +108,7 @@ class Dialog(Toplevel):
     def __init__(self, parent, title=None, content=""):
         Toplevel.__init__(self, parent)
         self.transient(parent)
+        self.log = logging.getLogger(__name__)
 
         if title:
             self.title(title)
@@ -178,6 +186,7 @@ class Meter(Canvas):
     """
 
     def __init__(self, master=None, **kw):
+        self.log = logging.getLogger(__name__)
         try:
             self.min = kw['min']
             del kw['min']
@@ -213,19 +222,17 @@ class Meter(Canvas):
 
 
 class Task(Frame):
-    WORKING = 1
-    RESTING = 0
     # needs to be 1000 so display update intervals are consistent when
     # resting
     CHK_INT = 1000  # milliseconds
 
     def __init__(self,
                  master=None,
-                 work=20,
-                 rest=3,
+                 work=WORK_TM,
+                 rest=REST_TM,
                  debug=0,
-                 server="localhost",
-                 port=8180):
+                 server=HOST,
+                 port=PORT):
         """create the task widget and get things started"""
 
         self.lid_state = "open"
@@ -237,6 +244,7 @@ class Task(Frame):
         self.cancel_rest = 0
         self.resttext = ""
 
+        self.log = logging.getLogger(__name__)
         if debug:
             self.output = sys.stderr
         else:
@@ -346,14 +354,14 @@ class Task(Frame):
     def setup_server(self, server, port):
         if server is None:
             self.server = collector.Collector()
-            print("using private Collector()", file=self.output)
+            self.log.debug("using private Collector()")
             return
 
         self.server = xmlrpc.client.ServerProxy("http://%s:%d" % (server,
                                                                   port))
         try:
             self.server.get()
-            print("found existing server", file=self.output)
+            self.log.debug("found existing server")
         except socket.error:
             if server in ["", "localhost", "127.0.0.1"]:
                 cmd = "watch-server.py"
@@ -368,13 +376,13 @@ class Task(Frame):
                     try:
                         self.server.get()
                         atexit.register(os.kill, pid, signal.SIGHUP)
-                        print("spawned server", file=self.output)
+                        self.log.debug("spawned server")
                         return
                     except socket.error:
                         time.sleep(0.1)
             # nothing else worked, but use our own collector
             self.server = collector.Collector()
-            print("using private Collector()", file=self.output)
+            self.log.debug("using private Collector()")
 
     def reset_duration(self, _dummy=None):
         """reset work/rest interval lengths to current scale values"""
@@ -395,27 +403,21 @@ class Task(Frame):
 
         self.server.save_scales(self.work_scl.get(), self.rest_scl.get())
 
-    def which_state(self):
-        return "working" if self.state == self.WORKING else "resting"
-
     def work(self):
         """start the work period"""
         # can't just set it to self.CHK_INT because the session may have
         # been idle for a long time
         self.reset_warning()
         self.restmeter.reset()
-        self.state = self.WORKING
+        self.state = "working"
         self.then = self.now + self.work_scl.get() * 60
         self.workmeter.set_range(self.now, self.then)
         self.workmeter.set(self.now)
         self.cover.withdraw()
 
-        print("work:", end=' ', file=self.output)
-        print("state:", self.which_state(), end=' ', file=self.output)
-        print("now:", hhmm(self.now), end=' ', file=self.output)
-        print("then:", hhmm(self.then), end=' ', file=self.output)
-        print("int:", self.check_interval, end=' ', file=self.output)
-        print(file=self.output)
+        self.log.debug(__("work: state: {} now: {} then: {} int: {}",
+                          self.state, hhmm(self.now), hhmm(self.then),
+                          self.check_interval))
         self.after(self.check_interval, self.tick)
 
     def warn_work_end(self):
@@ -438,7 +440,7 @@ class Task(Frame):
         self.check_interval = self.CHK_INT
         self.cancel_rest = 0
         self.workmeter.reset()
-        self.state = self.RESTING
+        self.state = "resting"
         # the user may not have been typing or mousing right up to the
         # work/rest threshold - give credit for whatever rest time has
         # already been accumulated
@@ -457,12 +459,9 @@ class Task(Frame):
             self.cancel_button.pack_forget()
         self.after(self.check_interval, self.tick)
 
-        print("rest:", end=' ', file=self.output)
-        print("state:", self.which_state(), end=' ', file=self.output)
-        print("now:", hhmm(self.now), end=' ', file=self.output)
-        print("then:", hhmm(self.then), end=' ', file=self.output)
-        print("int:", self.check_interval, end=' ', file=self.output)
-        print(file=self.output)
+        self.log.debug(__("rest: state: {} now: {} then: {} int: {}",
+                          self.state, hhmm(self.now), hhmm(self.then),
+                          self.check_interval))
 
     def help(self):
         Dialog(self.master, title="Help", content=usageText())
@@ -521,7 +520,7 @@ class Task(Frame):
                 if fields[0] == "state:":
                     state = fields[1]
                     if state != self.lid_state:
-                        print("lid state changed: {}".format(state), file=self.output)
+                        self.log.debug(__("lid state changed: {}", state))
                         self.lid_state = state
                         self.lid_time = time.time()
 
@@ -539,7 +538,10 @@ class Task(Frame):
             self.work_scl.set(work_time)
             self.rest_scl.set(rest_time)
 
-        if self.state == self.RESTING:
+        self.log.debug(__("work: state: {} now: {} then: {} int: {}",
+                          self.state, hhmm(self.now), hhmm(self.then),
+                          self.check_interval))
+        if self.state == "resting":
             # user explicitly cancelled the rest or the idle period
             # exceeded the desired rest time
             if self.cancel_rest or idle > rest_time * 60:
@@ -598,11 +600,26 @@ class Task(Frame):
     def cancel(self):
         self.cancel_rest = 1
 
+class BraceMessage:
+    def __init__(self, fmt, *args, **kwargs):
+        self.fmt = fmt
+        self.args = args
+        self.kwargs = kwargs
+
+    def __str__(self):
+        return self.fmt.format(*self.args, **self.kwargs)
+__ = BraceMessage
+
 def hhmm(t):
     return time.strftime("%H:%M:%S", time.localtime(t))
 
 def main(args):
     work, rest, geometry, debug, server, port = parse(args)
+    logging.basicConfig(
+        level="DEBUG" if debug else "INFO",
+        style='{',
+        format=FORMAT
+    )
     app = Tk()
     app.title("Typing Watcher")
     if geometry:
@@ -619,13 +636,12 @@ def main(args):
 
 
 def usage():
-    print("Usage %s" % sys.argv[0], file=sys.stderr)
     print(usageText(), file=sys.stderr)
     sys.exit()
 
 
 def usageText():
-    return __doc__
+    return __doc__.format(**globals())
 
 
 def parse(args):
