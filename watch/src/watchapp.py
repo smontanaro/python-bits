@@ -414,10 +414,6 @@ class Task(Frame):
         self.workmeter.set_range(self.now, self.then)
         self.workmeter.set(self.now)
         self.cover.withdraw()
-
-        self.log.debug(__("work: state: {} now: {} then: {} int: {}",
-                          self.state, hhmm(self.now), hhmm(self.then),
-                          self.check_interval))
         self.after(self.check_interval, self.tick)
 
     def warn_work_end(self):
@@ -459,9 +455,9 @@ class Task(Frame):
             self.cancel_button.pack_forget()
         self.after(self.check_interval, self.tick)
 
-        self.log.debug(__("rest: state: {} now: {} then: {} int: {}",
+        self.log.debug(__("rest: state: {} now: {} then: {} active? {}",
                           self.state, hhmm(self.now), hhmm(self.then),
-                          self.check_interval))
+                          self.check_activity()))
 
     def help(self):
         Dialog(self.master, title="Help", content=usageText())
@@ -481,19 +477,22 @@ class Task(Frame):
         activity was detected.
         """
         self.check_lid_state()
+        active = False
         if self.lid_state == "open":
             dflt = self._dispatch["default"]
             checker = self._dispatch.get(sys.platform, dflt)
-            if checker(self):
+            active = checker(self)
+            if active:
                 self.server.tick()
+        return active
 
     def check_mouse(self):
         """default checker, just compares current w/ saved mouse pos"""
         mouse = self.winfo_pointerxy()
-        if mouse != self.mouse:
+        try:
+            return mouse != self.mouse
+        finally:
             self.mouse = mouse
-            return True
-        return False
 
     _dispatch["default"] = check_mouse
 
@@ -509,7 +508,7 @@ class Task(Frame):
                 count = sum(int(fields[n]) for n in range(1, 8))
                 self.interrupt_count = count
                 break
-        return self.interrupt_count > last_count
+        return self.check_mouse() or self.interrupt_count > last_count
 
     _dispatch["linux"] = get_linux_interrupts
 
@@ -523,11 +522,13 @@ class Task(Frame):
                         self.log.debug(__("lid state changed: {}", state))
                         self.lid_state = state
                         self.lid_time = time.time()
+        else:
+            self.lid_state = "open"
 
     def tick(self):
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
-        self.check_activity()
+        active = self.check_activity()
         self.last_int, work_time, rest_time, self.now = self.server.get()
         idle = max(0, self.now - self.last_int)
 
@@ -538,9 +539,9 @@ class Task(Frame):
             self.work_scl.set(work_time)
             self.rest_scl.set(rest_time)
 
-        self.log.debug(__("work: state: {} now: {} then: {} int: {}",
+        self.log.debug(__("work: state: {} now: {} then: {} active? {}",
                           self.state, hhmm(self.now), hhmm(self.then),
-                          self.check_interval))
+                          active))
         if self.state == "resting":
             # user explicitly cancelled the rest or the idle period
             # exceeded the desired rest time
@@ -553,8 +554,8 @@ class Task(Frame):
             self.cover.tkraise()
 
             if idle <= self.idle:
-                # user moved something - extend rest by 10 seconds
-                self.then = self.then + 10
+                # user moved something - extend rest by a second
+                self.then += 1
                 self.restmeter.set_range(self.restmeter.min, self.then)
                 self.restmeter.set(self.now)
                 self.idle = idle
