@@ -78,6 +78,8 @@ Author: Skip Montanaro (skip.montanaro@gmail.com)
 Project Home: https://github.com/smontanaro/python-bits/
 """
 
+from __future__ import print_function
+
 import atexit
 import getopt
 import logging
