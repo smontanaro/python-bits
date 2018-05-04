@@ -250,7 +250,7 @@ class Task(Frame):
         if debug:
             self.output = sys.stderr
         else:
-            self.output = open("/dev/null", "w")
+            self.output = open(os.devnull, "w")
 
         Frame.__init__(*(self, master))
 
