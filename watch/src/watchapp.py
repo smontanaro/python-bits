@@ -88,11 +88,11 @@ import signal
 import socket
 import sys
 import time
-from tkinter import (Toplevel, Canvas, Frame, Scale, Radiobutton, Button,
-                     Scrollbar, StringVar, Label, Text, Tk,
-                     RIGHT, LEFT, BOTH, HORIZONTAL, Y, NORMAL, END,
-                     ACTIVE, DISABLED)
-import xmlrpc.client
+from six.moves.tkinter import (Toplevel, Canvas, Frame, Scale, Radiobutton, Button,
+                               Scrollbar, StringVar, Label, Text, Tk,
+                               RIGHT, LEFT, BOTH, HORIZONTAL, Y, NORMAL, END,
+                               ACTIVE, DISABLED)
+from six.moves import xmlrpc_client
 
 from watch import collector
 
@@ -359,7 +359,7 @@ class Task(Frame):
             self.log.debug("using private Collector()")
             return
 
-        self.server = xmlrpc.client.ServerProxy("http://%s:%d" % (server,
+        self.server = xmlrpc_client.ServerProxy("http://%s:%d" % (server,
                                                                   port))
         try:
             self.server.get()
@@ -371,7 +371,7 @@ class Task(Frame):
                 pid = os.spawnvp(os.P_NOWAIT, cmd, args)
                 # wait briefly for server to start
                 time.sleep(0.2)
-                self.server = xmlrpc.client.ServerProxy(
+                self.server = xmlrpc_client.ServerProxy(
                     "http://%s:%d" % (server, port))
                 # try connecting
                 for _i in range(10):
