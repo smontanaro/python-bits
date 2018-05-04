@@ -316,7 +316,7 @@ class Task(Frame):
         self.cover.withdraw()
         # user can't resize it
         self.cover.resizable(0, 0)
-        (w, h) = (self.winfo_screenwidth(), self.winfo_screenheight())
+        (w, h) = (self.winfo_vrootwidth(), self.winfo_vrootheight())
         if debug:
             # just a small window when debugging
             w, h = (w / 5, h / 5)
