@@ -31,7 +31,8 @@ def main():
     logging.basicConfig(level="DEBUG" if debug else "INFO", style='{',
                         format=FORMAT)
 
-    server = Server(('', port), RPCHandler, False)
+    server = Server(addr=('', port), requestHandler=RPCHandler,
+                    allow_none=True, logRequests=False)
     c = collector.Collector()
     server.register_instance(c)
     try:
