@@ -16,6 +16,7 @@ Command line arguments:
      -p n       --port=n        set server port              8080
      -g gspec   --geometry=g    set startup geometry         sys-dependent
      -n         --noserver      don't contact or start server
+     -m mode    --mode=mode     fascist or friendly
 
 Watch is a Tk-based program that monitors work and rest times for keyboard
 and mouse use to help users avoid overuse that can lead to or exacerbate
@@ -272,7 +273,8 @@ class Task(Frame):
                  work=WORK_TM,
                  rest=REST_TM,
                  server=HOST,
-                 port=PORT):
+                 port=PORT,
+                 mode='fascist'):
         """create the task widget and get things started"""
 
         self.lid_state = "open"
@@ -287,8 +289,8 @@ class Task(Frame):
 
         Frame.__init__(*(self, master))
 
-        self.style = StringVar()
-        self.style.set("fascist")  # or "friendly"
+        self.mode = StringVar()
+        self.mode.set(mode)    # "fascist" or "friendly"
 
         # create main interactor window
         self.workmeter = Meter(self, background="grey50")
@@ -325,12 +327,12 @@ class Task(Frame):
         self.dictator = Radiobutton(
             self.radio_frame,
             text="Fascist",
-            variable=self.style,
+            variable=self.mode,
             value="fascist")
         self.friend = Radiobutton(
             self.radio_frame,
             text="Friendly",
-            variable=self.style,
+            variable=self.mode,
             value="friendly")
         self.dictator.pack(side=LEFT)
         self.friend.pack(side=LEFT)
@@ -406,7 +408,8 @@ class Task(Frame):
                 # wait briefly for server to start
                 time.sleep(0.2)
                 self.server = xmlrpc_client.ServerProxy(
-                    "http://%s:%d" % (server, port))
+                    "http://%s:%d" % (server, port),
+                    allow_none=True)
                 # try connecting
                 for _i in range(10):
                     try:
@@ -484,7 +487,7 @@ class Task(Frame):
         self.restnote.configure(text=resttext)
         self.restmeter.set_range(self.now, self.then)
         self.restmeter.reset()
-        if self.style.get() == "friendly":
+        if self.mode.get() == "friendly":
             self.cancel_button.pack(pady=2)
         else:
             self.cancel_button.pack_forget()
@@ -666,7 +669,7 @@ def hhmm(t):
     return datetime.datetime.fromtimestamp(t).strftime("%H:%M:%S")
 
 def main(args):
-    work, rest, geometry, debug, server, port = parse(args)
+    (work, rest, geometry, debug, server, port, mode) = parse(args)
     logging.basicConfig(level="DEBUG" if debug else "INFO", style='{',
                         format=FORMAT)
     app = Tk()
@@ -678,7 +681,8 @@ def main(args):
         work=work,
         rest=rest,
         server=server,
-        port=port)
+        port=port,
+        mode=mode)
     task.pack()
     app.mainloop()
 
@@ -693,9 +697,9 @@ def usageText():
 
 
 def parse(args):
-    opts, args = getopt.getopt(args, "ndhw:r:g:s:p:", [
+    opts, args = getopt.getopt(args, "ndhw:r:g:s:p:m:", [
         'debug', 'help', 'noserver', 'server=', 'port=', 'work=', 'rest=',
-        'geometry='
+        'geometry=', 'mode='
     ])
 
     # defaults
@@ -705,6 +709,7 @@ def parse(args):
     debug = 0
     server = "localhost"
     port = 8080
+    mode = 'fascist'
 
     for opt, val in opts:
         if opt in ['-h', '--help']:
@@ -723,11 +728,13 @@ def parse(args):
             port = int(val)
         elif opt in ['-n', '--noserver']:
             port = server = None
+        elif opt in ['-m', '--mode']:
+            mode = val
 
     if rest > work:
         usage()
 
-    return work, rest, geometry, debug, server, port
+    return (work, rest, geometry, debug, server, port, mode)
 
 
 if __name__ == "__main__":
