@@ -416,7 +416,7 @@ class Task(Frame):
                         return
                     except socket.error:
                         time.sleep(0.1)
-            # nothing else worked, but use our own collector
+            # nothing else worked, so fall back to an embedded collector
             self.server = collector.Collector()
             self.log.debug("using private Collector()")
 
@@ -447,7 +447,7 @@ class Task(Frame):
         self.restmeter.reset()
         self.state = "working"
         self.then = self.now + self.work_scl.get() * 60
-        self.log.debug(__("work: then: {}", self.then))
+        self.log.info(__("work: then: {}", self.then))
         self.workmeter.set_range(self.now, self.then)
         self.workmeter.reset()
         self.cover.withdraw()
@@ -562,11 +562,11 @@ class Task(Frame):
         """
         idle = 0
         if state != self.lid_state:
-            self.log.debug(__("lid state changed: {}", state))
+            self.log.info(__("lid state changed: {}", state))
             lid_time = time.time()
             if state == "open":
                 idle = lid_time - self.lid_time
-                self.log.debug(__("idle for {}s", idle))
+                self.log.info(__("idle for {}s", idle))
             self.lid_state = state
             self.lid_time = lid_time
         return idle
@@ -574,13 +574,7 @@ class Task(Frame):
     def tick(self):
         """perform periodic checks for activity or state switch"""
         try:
-            self.log.debug(__("tick-: work scale: {} rest scale: {} then-now: {}",
-                              self.work_scl.get(), self.rest_scl.get(),
-                              self.then - self.now))
             self._tick()
-            self.log.debug(__("tick+: work scale: {} rest scale: {} then-now: {}",
-                              self.work_scl.get(), self.rest_scl.get(),
-                              self.then - self.now))
         finally:
             self.after(CHK_INT, self.tick)
 
