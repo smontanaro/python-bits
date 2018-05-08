@@ -435,7 +435,7 @@ class Task(Frame):
             delta = wtime - self.old_work
         except AttributeError:
             delta = 0
-        self.log.debug(__("then: {} delta: {}", self.then, delta))
+        self.log.debug(__("then: {} delta: {}m", hhmm(self.then), delta))
         self.then = self.then + delta * 60
         self.old_work = wtime
 
@@ -447,7 +447,7 @@ class Task(Frame):
         self.restmeter.reset()
         self.state = "working"
         self.then = self.now + self.work_scl.get() * 60
-        self.log.info(__("work: then: {}", self.then))
+        self.log.debug(__("work: then: {}", hhmm(self.then)))
         self.workmeter.set_range(self.now, self.then)
         self.workmeter.reset()
         self.cover.withdraw()
@@ -581,7 +581,9 @@ class Task(Frame):
     def _tick(self):
         (self.last_int, work_time, rest_time, self.now) = self.server.get()
         # check for mouse or keyboard activity
-        if self.check_lid_state() > rest_time * 60:
+        idle_time = self.check_lid_state()
+        if idle_time > rest_time * 60:
+            self.log.info(__("The lid is up! Back to work: {}", hhmm(idle_time)))
             self.work()
             return
 
@@ -661,7 +663,7 @@ class BraceMessage:
 __ = BraceMessage
 
 def hhmm(t):
-    return time.strftime("%H:%M:%S", time.localtime(t))
+    return datetime.datetime.fromtimestamp(t).strftime("%H:%M:%S")
 
 def main(args):
     work, rest, geometry, debug, server, port = parse(args)

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
-from six.moves.xmlrpc_server import SimpleXMLRPCServer as RPCServer
-from six.moves.xmlrpc_server import SimpleXMLRPCRequestHandler as RPCHandler
+import getopt
+import logging
 import socket
 import sys
-import getopt
+
+from six.moves.xmlrpc_server import SimpleXMLRPCServer as RPCServer
+from six.moves.xmlrpc_server import SimpleXMLRPCRequestHandler as RPCHandler
 
 from watch import collector
 
@@ -14,6 +16,7 @@ class Server(RPCServer):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
 
+FORMAT = '{asctime} {levelname} {message}'
 
 def main():
     opts, _args = getopt.getopt(sys.argv[1:], "p:d", ['port=', 'debug'])
@@ -25,8 +28,11 @@ def main():
         elif opt in ['-d', '--debug']:
             debug = True
 
+    logging.basicConfig(level="DEBUG" if debug else "INFO", style='{',
+                        format=FORMAT)
+
     server = Server(('', port), RPCHandler, False)
-    c = collector.Collector(debug)
+    c = collector.Collector()
     server.register_instance(c)
     try:
         server.serve_forever()
