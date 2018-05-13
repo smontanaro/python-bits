@@ -479,6 +479,9 @@ class Task(Frame):
         # work/rest threshold - give credit for whatever rest time has
         # already been accumulated
         resttime = self.rest_scl.get() * 60 - (self.now - self.last_int)
+        if resttime < 0:
+            self.work()
+            return
         mins, secs = divmod(resttime, 60)
         self.then = self.now + resttime
         self.cover.deiconify()
