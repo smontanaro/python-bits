@@ -370,8 +370,6 @@ class Task(Frame):
         self.cancel_button = Button(f, text="Cancel Rest", command=self.cancel)
         f.pack()
 
-        # initialize interrupt information
-        self.linux_interrupts = 0
         # used by the default activity checker
         self.mouse = None
 
@@ -480,6 +478,7 @@ class Task(Frame):
         # already been accumulated
         resttime = self.rest_scl.get() * 60 - (self.now - self.last_int)
         if resttime < 0:
+            self.cancel()
             self.work()
             return
         mins, secs = divmod(resttime, 60)
@@ -579,14 +578,16 @@ class Task(Frame):
 
     def tick(self):
         """perform periodic checks for activity or state switch"""
-        try:
-            self._tick()
-        finally:
-            self.after(CHK_INT, self.tick)
+        # Unlike the gobject.timeout-type functions, Tk's after function
+        # needs to be rescheduled after each call.
+        self._tick()
+        self.after(CHK_INT, self.tick)
 
     def _tick(self):
         (self.last_int, work_time, rest_time, self.now) = self.server.get()
-        # check for mouse or keyboard activity
+        # Check for mouse or keyboard activity.  If the lid on a laptop was
+        # closed long enough ago, we immediately launch into a new work
+        # interval.
         idle_time = self.check_lid_state()
         if idle_time > rest_time * 60:
             self.log.info(__("The lid is up! Back to work: {}", hhmm(idle_time)))
@@ -596,7 +597,7 @@ class Task(Frame):
         active = self.check_activity()
         idle = max(0, self.now - self.last_int)
 
-        # check to see if the work/rest scales got adjusted by another
+        # Adjust work/rest times if they changed in another
         # watch instance
         if (self.work_scl.get() != work_time or
             self.rest_scl.get() != rest_time):
