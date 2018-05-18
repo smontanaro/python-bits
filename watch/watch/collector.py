@@ -16,20 +16,18 @@ class Collector:
         return time.time()
 
     def get(self):
+        "Return latest tick time, work length, rest length, and current time."
         now = self.now()
         self.log.debug("idle: %s", (now - self.time))
         return self.time, self.work, self.rest, now
 
     def tick(self):
+        "Update latest tick time."
         self.time = self.now()
         self.log.debug("tick now: %s", self.time)
-        return self.get()
 
     def put(self, work, rest):
-        """Save the work/rest times (timedeltas).
-
-        Note that the actual Tk scale widgets may well not support floats.
-        """
+        "Update the work & rest times."
         self.log.debug("work: %s, rest: %s", work, rest)
         self.work = work
         self.rest = rest
