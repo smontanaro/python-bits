@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import sys
 import os
@@ -16,13 +16,13 @@ def executable(path):
     return (
         # I own path and owner execute bit is set *or*
         statinfo.st_uid == os.geteuid() and
-        statinfo.st_mode & 0100 or
+        statinfo.st_mode & 0o100 or
         # I am in path's group and group execute bit is set *or*
         (statinfo.st_gid == os.getegid() or
          os.environ["USER"] in grp.getgrgid(statinfo.st_gid).gr_mem) and
-        statinfo.st_mode & 0010 or
+        statinfo.st_mode & 0o010 or
         # other execute bit is set
-        statinfo.st_mode & 0001)
+        statinfo.st_mode & 0o001)
 
 def main(args):
     results = set()
@@ -41,7 +41,7 @@ def main(args):
     results.sort()
 
     for prog in results:
-        print prog
+        print(prog)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
