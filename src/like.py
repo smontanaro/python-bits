@@ -1,12 +1,61 @@
 #!/usr/bin/env python3
 
-"""
-Find programs matching the given string(s).
+"""===========
+%(PROG)s
+===========
 
-Usage: %(PROG)s [ -h ] pattern ...
-    -h: display help
+----------------------------------------------------
+Find programs matching the given string(s).
+----------------------------------------------------
+
+:Author: skip.montanaro@gmail.com
+:Date: long time ago
+:Copyright: Skip Montanaro 2020
+:Version: 1
+:Manual section: 1
+:Manual group: shell helpers
+
+SYNOPSIS
+========
+
+ %(PROG)s [-h ] pattern ...
+
+OPTIONS
+=======
+
+-h         display help
 
 Patterns are just simple strings.
+
+DESCRIPTION
+===========
+
+Check PATH and defined shell functions for executable files containing
+the given patterns.
+
+EXAMPLE
+=======
+
+Find programs which convert PNM files into a different image file format::
+
+    $ like pnmto
+    /bin/pnmtoddif
+    /bin/pnmtofiasco
+    /bin/pnmtofits
+    /bin/pnmtojbig
+    /bin/pnmtojpeg
+    ...
+
+VERSION
+=======
+
+@@VERSION@@
+
+SEE ALSO
+========
+
+* type (shell builtin)
+
 """
 
 import getopt
