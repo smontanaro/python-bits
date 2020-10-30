@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 
-import sys
-import os
+"""
+Find programs matching the given string(s).
+
+Usage: %(PROG)s [ -h ] pattern ...
+    -h: display help
+
+Patterns are just simple strings.
+"""
+
+import getopt
 import glob
 import grp
+import os
+import sys
+
+PROG = os.path.split(sys.argv[0])[1]
 
 def executable(path):
     path = os.path.abspath(path)
@@ -24,7 +36,24 @@ def executable(path):
         # other execute bit is set
         statinfo.st_mode & 0o001)
 
+def usage(msg=None):
+    if msg is not None:
+        print(msg, file=sys.stderr)
+        print(file=sys.stderr)
+    print((__doc__.strip() % globals()), file=sys.stderr)
+
 def main(args):
+    try:
+        opts, args = getopt.getopt(args, "h")
+    except getopt.GetoptError as msg:
+        usage(msg)
+        return 1
+
+    for opt, arg in opts:
+        if opt == "-h":
+            usage()
+            return 0
+
     results = set()
     for directory in os.environ.get("PATH", "").split(":"):
         for prog in args:
