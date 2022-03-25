@@ -6,11 +6,14 @@
 # $Id: watch.py,v 1.5 2000/06/18 03:42:24 skip Exp $
 
 # Updated for Python 3 2018/04/26
-"""Usage: {PROG} [ -w min ] [ -r min ] [-g geometry ] [ -h ]
+"""Usage: {PROG} [ -w min ] [ -r min ] [-g geometry ] [ -h ] [ -f | --fascist | --friendly ]
 
 --work=minutes - set work time in minutes (default: {WORK_TM})
 --rest=minutes - set rest time in minutes (default: {REST_TM})
 --geometry=geo - geometry in typical X fashion
+--fascist      - set initial style to 'fascist'
+--friendly     - set initial style to 'friendly'
+-f             - toggle fascist setting (defaults to True)
 
 Watch is a Tk-based program that monitors work and rest times for keyboard
 and mouse use to help users avoid overuse that can lead to or exacerbate
@@ -133,7 +136,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     # for mouse/keyboard activity
     activity_dispatch = {}
 
-    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, debug=0):
+    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0):
         """create the task widget and get things started"""
 
         # various inits
@@ -152,7 +155,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         Frame.__init__(*(self, master))
 
         self.style = StringVar()
-        self.style.set("fascist")  # or "friendly"
+        self.style.set("fascist" if fascist else "friendly")
 
         # create main interactor window
         self.workmeter = Meter(self, background="grey50")
@@ -271,8 +274,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.workmeter.set(now)
         self.cover.withdraw()
 
-        self.log.debug(__("work: state: {} now: {} then: {}",
-                          self.which_state(), hhmm(now), hhmm(self.then)))
+        self.log.debug("work: state: %s now: %s then: %s",
+                       self.which_state(), hhmm(now), hhmm(self.then))
 
     def warn_work_end(self):
         """alert user that work period is almost up"""
@@ -304,8 +307,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         else:
             self.cancel_button.pack_forget()
 
-        self.log.debug(__("rest: state: {} now: {} then: {}",
-                          self.which_state(), hhmm(now), hhmm(self.then)))
+        self.log.debug("rest: state: %s now: %s then: %s",
+                       self.which_state(), hhmm(now), hhmm(self.then))
 
     def help_(self):
         d = simpledialog.SimpleDialog(
@@ -327,7 +330,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         """
         count = (self.activity_dispatch.get(sys.platform)
                  or self.activity_dispatch["default"])(self)
-        self.log.debug(__("interrupts: {}", count))
+        self.log.debug("interrupts: %s", count)
         return count
 
     def get_mouseinfo(self):
@@ -370,7 +373,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                     if fields[0] == "state:":
                         state = fields[1]
                         if state != self.lid_state:
-                            self.log.debug(__("lid state changed: {}", state))
+                            self.log.debug("lid state changed: %s", state)
                             self.lid_state = state
                             self.lid_time = time.time()
 
@@ -384,8 +387,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.interrupt_time = now
             self.interrupts = interrupts
 
-            self.log.debug(__("tick (1): state: {} now: {} then: {}",
-                              self.which_state(), hhmm(now), hhmm(self.then)))
+            self.log.debug("tick (1): state: %s now: %s then: %s",
+                           self.which_state(), hhmm(now), hhmm(self.then))
 
         if self.state == self.RESTING:
             # if there is an input interrupt since the start of the rest
@@ -396,10 +399,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.restmeter.set(now)
                 self.interrupt_time = self.restmeter.min
 
-                self.log.debug(__("tick (2): state: {} start: {}"
-                                  " now: {} then: {}",
-                                  self.which_state(), hhmm(self.restmeter.min),
-                                  hhmm(now), hhmm(self.then)))
+                self.log.debug("tick (2): state: %s start: %s now: %s then: %s",
+                               self.which_state(), hhmm(self.restmeter.min),
+                               hhmm(now), hhmm(self.then))
 
             if self.cancel_rest or now > self.then:
                 self.state = self.WORKING
@@ -415,7 +417,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.log.debug(self.resttext)
                 self.restnote.configure(text=self.resttext)
 
-                self.log.debug(__("tick (4): state: {}", self.which_state()))
+                self.log.debug("tick (4): state: %s", self.which_state())
 
         else:
             # if it's been at least the length of the rest interval
@@ -450,23 +452,13 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def cancel(self):
         self.cancel_rest = 1
 
-class BraceMessage:
-    def __init__(self, fmt, *args, **kwargs):
-        self.fmt = fmt
-        self.args = args
-        self.kwargs = kwargs
-
-    def __str__(self):
-        return self.fmt.format(*self.args, **self.kwargs)
-__ = BraceMessage
-
 def hhmm(t):
     return time.strftime("%H:%M:%S", time.localtime(t))
 
 
 FORMAT = '{asctime} {levelname} {message}'
 def main(args):
-    work, rest, geometry, debug = parse(args)
+    work, rest, geometry, fascist, debug = parse(args)
     logging.basicConfig(
         level="DEBUG" if debug else "INFO",
         style='{',
@@ -476,7 +468,7 @@ def main(args):
     app.title("Typing Watcher")
     if geometry:
         app.geometry(geometry)
-    task = Task(master=app, work=work, rest=rest, debug=debug)
+    task = Task(master=app, work=work, rest=rest, fascist=fascist, debug=debug)
     task.pack()
     app.mainloop()
 
@@ -491,8 +483,9 @@ def usageText():
     return __doc__.format(**globals())
 
 def parse(args):
-    opts = getopt.getopt(args[1:], "dhw:r:g:",
-                         ['debug', 'help', 'work=', 'rest=', 'geometry='])
+    opts = getopt.getopt(args[1:], "dhw:r:g:f",
+                         ['debug', 'help', 'work=', 'rest=', 'geometry=',
+                          'friendly', 'fascist'])
     options = opts[0]
 
     # defaults
@@ -500,6 +493,7 @@ def parse(args):
     rest = 3.0
     geometry = ""
     debug = 0
+    fascist = True
 
     for opt, val in options:
         if opt in ['-h', '--help']:
@@ -512,11 +506,17 @@ def parse(args):
             rest = float(val)
         elif opt in ['-g', '--geometry']:
             geometry = val
+        elif opt == '-f':
+            fascist = not fascist
+        elif opt == '--friendly':
+            fascist = False
+        elif opt == '--fascist':
+            fascist = True
 
     if rest > work:
         usage(args[0])
 
-    return work, rest, geometry, debug
+    return work, rest, geometry, fascist, debug
 
 
 if __name__ == "__main__":
