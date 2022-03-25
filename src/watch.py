@@ -35,7 +35,7 @@ pointer by a few pixels so the typing watcher will notice the activity.  It
 toggles the jiggle direction so that the next time it jiggles the mouse the
 other way.  The following code uses set-mouse-pixel-position and
 mouse-pixel-position which are both available in recent versions of GNU
-Emacs and XEmacs.
+Emacs and XEmacs::
 
     (setq pointer-jiggle-val 3)
     (defun jiggle-mouse ()
@@ -209,7 +209,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         if debug:
             # just a small window when debugging
             (w, h) = (w // 8, h // 8)
-        self.cover.geometry("%dx%d+0+0" % (w, h))
+        self.cover.geometry(f"{w}x{h}+0+0")
 
         # and it's undecorated
         self.cover.overrideredirect(1)
@@ -283,11 +283,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.set_background(self.bgcolor)
 
     def set_background(self, color):
-        for w in (self, self.work_scl, self.rest_scl, self.dictator,
-                  self.friend, self.button_frame, self.stopb, self.restb,
-                  self.helpb, self.work_frame, self.rest_frame,
-                  self.radio_frame, self.work_label, self.rest_label,
-                  self.meter_label, self.meter_frame):
+        for w in (self, self.work_scl, self.rest_scl,):
             w["background"] = color
 
     def rest(self):
@@ -299,7 +295,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.then = now + self.rest_scl.get() * 60
         self.cover.deiconify()
         self.cover.tkraise()
-        self.resttext = ("Rest for %dm00s please..." % self.rest_scl.get())
+        self.resttext = (f"Rest for {self.rest_scl.get()}m00s please...")
         self.restnote.configure(text=self.resttext)
         self.restmeter.set_range(now, self.then)
         self.restmeter.set(now)
@@ -355,26 +351,28 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # Can't seem to find mouse interrupts, so for now, just watch
         # keyboard and mix add get_mouseinfo() output as a substitute for
         # mouse interrupts.
-        for line in open("/proc/interrupts"):
-            fields = line.split()
-            if fields[0] == "1:":
-                count = sum(int(fields[n]) for n in range(1, 8))
-                self.interrupt_count = count
-                break
+        with open("/proc/interrupts", encoding="utf-8") as interrupts:
+            for line in interrupts:
+                fields = line.split()
+                if fields[0] == "1:":
+                    count = sum(int(fields[n]) for n in range(1, 8))
+                    self.interrupt_count = count
+                    break
         return self.interrupt_count + self.get_mouseinfo()
 
     activity_dispatch["linux"] = get_linux_interrupts
 
     def check_lid_state(self):
         if os.path.exists(LID_STATE):
-            for line in open(LID_STATE):
-                fields = line.strip().split()
-                if fields[0] == "state:":
-                    state = fields[1]
-                    if state != self.lid_state:
-                        self.log.debug(__("lid state changed: {}", state))
-                        self.lid_state = state
-                        self.lid_time = time.time()
+            with open(LID_STATE, encoding="utf-8") as lid:
+                for line in lid:
+                    fields = line.strip().split()
+                    if fields[0] == "state:":
+                        state = fields[1]
+                        if state != self.lid_state:
+                            self.log.debug(__("lid state changed: {}", state))
+                            self.lid_state = state
+                            self.lid_time = time.time()
 
     def tick(self):
         """perform periodic checks for activity or state switch"""
@@ -413,8 +411,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 timeleft = int(self.then - now)
                 minleft = timeleft / 60
                 secleft = timeleft % 60
-                self.resttext = ("Rest for %dm%02ds please..." % (minleft,
-                                                                  secleft))
+                self.resttext = (f"Rest for {minleft}m{secleft:.02d}s please...")
                 self.log.debug(self.resttext)
                 self.restnote.configure(text=self.resttext)
 
