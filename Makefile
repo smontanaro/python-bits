@@ -1,4 +1,4 @@
-PY_SCRIPTS = like.py
+PY_SCRIPTS = like.py watch.py
 RST_FILES =
 
 SCRIPTS = $(PY_SCRIPTS)
@@ -48,7 +48,7 @@ $(BINDIR)/% : $(SRCDIR)/%.py
 $(MANDIR)/%.1 : $(RSTDIR)/%.rst
 	mkdir -p $(MANDIR)
 	rm -f $@
-	rst2man < $< \
+	rst2man.py < $< \
 	| sed -e '/^\.de1 rstReportMargin/,/^\.\./d' \
 	      -e '/^\.de1 INDENT/,/^\.\./d' \
 	      -e '/^\.de UNINDENT/,/^\.\./d' \
@@ -58,7 +58,7 @@ $(MANDIR)/%.1 : $(RSTDIR)/%.rst
 $(MANDIR)/%.1 : $(SRCDIR)/%.py
 	mkdir -p $(MANDIR)
 	rm -f $@
-	python $< -h 2>&1 | sed -e 's/@@VERSION@@/$(VERSION)/g' | rst2man > $@
+	python $< -h 2>&1 | sed -e 's/@@VERSION@@/$(VERSION)/g' | rst2man.py > $@
 	chmod 0444 $@
 
 .PHONY: install
