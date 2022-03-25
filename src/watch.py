@@ -409,7 +409,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
                 # update message to reflect rest time remaining
                 timeleft = int(self.then - now)
-                minleft = timeleft / 60
+                minleft = timeleft // 60
                 secleft = timeleft % 60
                 self.resttext = (f"Rest for {minleft}m{secleft:02d}s please...")
                 self.log.debug(self.resttext)
