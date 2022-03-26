@@ -66,6 +66,10 @@ import sys
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
+# # Eventually?
+# from tkinter import (Canvas, StringVar, Tk, Toplevel, LEFT, HORIZONTAL,
+#                      simpledialog)
+# from tkinter.ttk import (Frame, Label, Scale, Button, Frame, Radiobutton)
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
 WORK_TM = 10
