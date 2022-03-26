@@ -286,13 +286,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.set_background(self.bgcolor)
 
     def set_background(self, color):
-        already = set()
         def set_bg(w, indent=0):
             for child in w.winfo_children():
                 child["background"] = color
-                if child not in already:
-                    already.add(child)
-                    set_bg(child, indent+1)
+                set_bg(child, indent+1)
         self["background"] = color
         set_bg(self)
 
