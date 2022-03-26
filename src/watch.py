@@ -254,10 +254,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.then += delta * 60
         self.old_work = wtime
 
-    #uncomment for Python 1.4
-    #def winfo_pointerxy(self):
-    #   return self._getints(self.tk.call('winfo', 'pointerxy', self._w))
-
     def which_state(self):
         if self.state == self.WORKING:
             return "working"
@@ -286,8 +282,15 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.set_background(self.bgcolor)
 
     def set_background(self, color):
-        for w in (self, self.work_scl, self.rest_scl,):
-            w["background"] = color
+        already = set()
+        def set_bg(w, indent=0):
+            for child in w.winfo_children():
+                child["background"] = color
+                if child not in already:
+                    already.add(child)
+                    set_bg(child, indent+1)
+        self["background"] = color
+        set_bg(self)
 
     def rest(self):
         """overlay the screen with a window, preventing typing"""
