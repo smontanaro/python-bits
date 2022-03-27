@@ -129,22 +129,20 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         self.set(self.min)
 
 
+LOG = logging.getLogger(__name__)
+
 class Task(Frame):  # pylint: disable=too-many-ancestors
+    "The base for the entire application"
     WORKING = 1
     RESTING = 0
     # needs to be 1000 so display update intervals are consistent when
     # resting
     CHK_INT = 95  # milliseconds
 
-    # keyed by sys.platform or "default" to return a method that checks
-    # for mouse/keyboard activity
-    activity_dispatch = {}
-
     def __init__(self, master=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0):
         """create the task widget and get things started"""
 
         # various inits
-        self.log = logging.getLogger(__name__)
         self.mouse_pos = None
         self.old_work = 0.0
         self.then = 0
@@ -276,8 +274,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.workmeter.set(now)
         self.cover.withdraw()
 
-        self.log.debug("work: state: %s now: %s then: %s",
-                       self.which_state(), hhmm(now), hhmm(self.then))
+        LOG.debug("work: state: %s now: %s then: %s",
+                  self.which_state(), hhmm(now), hhmm(self.then))
 
     def warn_work_end(self):
         """alert user that work period is almost up"""
@@ -313,8 +311,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         else:
             self.cancel_button.pack_forget()
 
-        self.log.debug("rest: state: %s now: %s then: %s",
-                       self.which_state(), hhmm(now), hhmm(self.then))
+        LOG.debug("rest: state: %s now: %s then: %s",
+                  self.which_state(), hhmm(now), hhmm(self.then))
 
     def help_(self):
         d = simpledialog.SimpleDialog(
@@ -334,53 +332,21 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         in all cases, the value returned should be a value that increases
         monotonically with activity
         """
+        # This is all I need now...
         count = self.get_xprintidle()
-        self.log.debug("interrupts: %s", count)
+        LOG.debug("interrupts: %s", count)
         return count
-
-    def get_mouseinfo(self):
-        if self.lid_state == "closed":
-            return self.mouse_counts
-        ptr_xy = self.winfo_pointerxy()
-        if self.mouse_pos is None:
-            self.mouse_pos = ptr_xy
-        mouse_pos = ptr_xy
-        if mouse_pos != self.mouse_pos:
-            self.mouse_pos = mouse_pos
-            self.mouse_counts += 1
-        return self.mouse_counts
-
-    activity_dispatch["default"] = get_mouseinfo
 
     def get_xprintidle(self):
         if self.lid_state == "closed":
             return self.idle_count
         idle_ms = int(os.popen("xprintidle").read().strip())
-        self.log.debug("idle_ms: %d, idle_time: %d, idle_count: %d",
-                       idle_ms, self.idle_time, self.idle_count)
+        LOG.debug("idle_ms: %d, idle_time: %d, idle_count: %d",
+                  idle_ms, self.idle_time, self.idle_count)
         if idle_ms < self.idle_time:
             self.idle_count += 1
         self.idle_time = idle_ms
         return self.idle_count
-    activity_dispatch["xprintidle"] = get_xprintidle
-
-    def get_linux_interrupts(self):
-        if self.lid_state == "closed":
-            return self.interrupt_count
-        count = 0
-        # Can't seem to find mouse interrupts, so for now, just watch
-        # keyboard and mix add get_mouseinfo() output as a substitute for
-        # mouse interrupts.
-        with open("/proc/interrupts", encoding="utf-8") as interrupts:
-            for line in interrupts:
-                fields = line.split()
-                if fields[0] == "1:":
-                    count = sum(int(fields[n]) for n in range(1, 8))
-                    self.interrupt_count = count
-                    break
-        return self.interrupt_count + self.get_mouseinfo()
-
-    activity_dispatch["linux"] = get_linux_interrupts
 
     def check_lid_state(self):
         if os.path.exists(LID_STATE):
@@ -390,7 +356,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                     if fields[0] == "state:":
                         state = fields[1]
                         if state != self.lid_state:
-                            self.log.debug("lid state changed: %s", state)
+                            LOG.debug("lid state changed: %s", state)
                             self.lid_state = state
                             self.lid_time = time.time()
 
@@ -404,8 +370,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.interrupt_time = now
             self.interrupts = interrupts
 
-            self.log.debug("tick (1): state: %s now: %s then: %s",
-                           self.which_state(), hhmm(now), hhmm(self.then))
+            LOG.debug("tick (1): state: %s now: %s then: %s",
+                      self.which_state(), hhmm(now), hhmm(self.then))
 
         if self.state == self.RESTING:
             # if there is an input interrupt since the start of the rest
@@ -416,9 +382,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.restmeter.set(now)
                 self.interrupt_time = self.restmeter.min
 
-                self.log.debug("tick (2): state: %s start: %s now: %s then: %s",
-                               self.which_state(), hhmm(self.restmeter.min),
-                               hhmm(now), hhmm(self.then))
+                LOG.debug("tick (2): state: %s start: %s now: %s then: %s",
+                          self.which_state(), hhmm(self.restmeter.min),
+                          hhmm(now), hhmm(self.then))
 
             if self.cancel_rest or now > self.then:
                 self.state = self.WORKING
@@ -431,10 +397,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 minleft = timeleft // 60
                 secleft = timeleft % 60
                 self.resttext = (f"Rest for {minleft}m{secleft:02d}s please...")
-                self.log.debug(self.resttext)
+                LOG.debug(self.resttext)
                 self.restnote.configure(text=self.resttext)
 
-                self.log.debug("tick (4): state: %s", self.which_state())
+                LOG.debug("tick (4): state: %s", self.which_state())
 
         else:
             # if it's been at least the length of the rest interval
