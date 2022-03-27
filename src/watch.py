@@ -155,6 +155,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.lid_state = "open"
         self.lid_time = time.time()
         self.interrupt_count = 0
+        self.idle_time = 99999
+        self.idle_count = 0
 
         Frame.__init__(*(self, master))
 
@@ -332,8 +334,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         in all cases, the value returned should be a value that increases
         monotonically with activity
         """
-        count = (self.activity_dispatch.get(sys.platform)
-                 or self.activity_dispatch["default"])(self)
+        count = self.get_xprintidle()
         self.log.debug("interrupts: %s", count)
         return count
 
@@ -350,6 +351,18 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         return self.mouse_counts
 
     activity_dispatch["default"] = get_mouseinfo
+
+    def get_xprintidle(self):
+        if self.lid_state == "closed":
+            return self.idle_count
+        idle_ms = int(os.popen("xprintidle").read().strip())
+        self.log.debug("idle_ms: %d, idle_time: %d, idle_count: %d",
+                       idle_ms, self.idle_time, self.idle_count)
+        if idle_ms < self.idle_time:
+            self.idle_count += 1
+        self.idle_time = idle_ms
+        return self.idle_count
+    activity_dispatch["xprintidle"] = get_xprintidle
 
     def get_linux_interrupts(self):
         if self.lid_state == "closed":
