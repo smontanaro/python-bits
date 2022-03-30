@@ -59,6 +59,7 @@ Emacs and XEmacs::
 
 """
 
+import enum
 import getopt
 import logging
 import os
@@ -70,11 +71,17 @@ from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
 # from tkinter import (Canvas, StringVar, Tk, Toplevel, LEFT, HORIZONTAL,
 #                      simpledialog)
 # from tkinter.ttk import (Frame, Label, Scale, Button, Frame, Radiobutton)
+from typing import Tuple
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
 WORK_TM = 10
 REST_TM = 3
 PROG = os.path.split(sys.argv[0])[-1]
+
+NORMAL_COLOR = "grey75"
+ALERT_COLOR = "yellow"
+
+TK_SENTINEL_INT = -99999999
 
 class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """Progress meter widget.
@@ -90,7 +97,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
     Needs to also have an orientation option.
     """
 
-    def __init__(self, master=None, **kw):
+    def __init__(self, master=None, **kw) -> None:
         self.log = logging.getLogger(__name__)
         self.min = 0
         self.max = 100
@@ -108,15 +115,15 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         if "background" not in kw:
             kw['background'] = "black"
 
-        self.rect = None
+        self.rect = TK_SENTINEL_INT
         Canvas.__init__(*(self, master), **kw)
 
-    def set_range(self, mn, mx):
+    def set_range(self, mn : int, mx : int) -> None:
         self.min = mn
         self.max = mx
 
-    def set(self, value):
-        if self.rect is not None:
+    def set(self, value : int) -> None:
+        if self.rect != TK_SENTINEL_INT:
             self.delete(self.rect)
         metheight = int(self.cget("height")) + 1
         canwidth = int(self.cget("width"))
@@ -125,34 +132,32 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
             0, 0, metwidth, metheight, outline="red", fill="red")
         self.update()
 
-    def reset(self):
+    def reset(self) -> None:
         self.set(self.min)
 
 
 LOG = logging.getLogger(__name__)
 
+CHK_INT = 95  # milliseconds
+
+class wstate(enum.Enum):
+    "state of the interface"
+    WORKING = "working"
+    RESTING = "resting"
+
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
-    WORKING = 1
-    RESTING = 0
-    # needs to be 1000 so display update intervals are consistent when
-    # resting
-    CHK_INT = 95  # milliseconds
 
-    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0):
+    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0) -> None:
         """create the task widget and get things started"""
 
         # various inits
-        self.mouse_pos = None
         self.old_work = 0.0
         self.then = 0
-        self.state = self.WORKING
+        self.state = wstate.WORKING
         self.cancel_rest = 0
-        self.resttext = ""
-        self.mouse_counts = 0
         self.lid_state = "open"
-        self.lid_time = time.time()
-        self.interrupt_count = 0
+        self.lid_time = int(time.time())
         self.idle_time = 99999
         self.idle_count = 0
 
@@ -162,7 +167,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.style.set("fascist" if fascist else "friendly")
 
         # create main interactor window
-        self.workmeter = Meter(self, background="grey50")
+        self.workmeter = Meter(self, background=NORMAL_COLOR)
         self.workmeter.pack()
 
         f1 = Frame(self)
@@ -211,7 +216,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.cover = Toplevel(background="black")
         self.cover.withdraw()
         # user can't resize it
-        self.cover.resizable(0, 0)
+        self.cover.resizable(False, False)
         (w, h) = (self.winfo_screenwidth(), self.winfo_screenheight())
         if debug:
             # just a small window when debugging
@@ -219,29 +224,29 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.cover.geometry(f"{w}x{h}+0+0")
 
         # and it's undecorated
-        self.cover.overrideredirect(1)
+        self.cover.overrideredirect(True)
 
         # cover contains a frame with rest message and meter
         f = Frame(self.cover, background="black")
         self.restnote = Label(f, background="black", foreground="white")
-        self.restmeter = Meter(f, background="grey50", height=10, width=200)
+        self.restmeter = Meter(f, background=NORMAL_COLOR, height=10, width=200)
         self.restnote.pack(pady=2)
         self.restmeter.pack(fill="x", expand=1, pady=2)
         self.cancel_button = Button(f, text="Cancel Rest", command=self.cancel)
         f.pack()
 
         # initialize interrupt information
-        self.interrupt_time = time.time()
+        self.interrupt_time = int(time.time())
         self.interrupts = self.get_interrupts()
 
-        self.bgcolor = self["background"]
+        self.set_background(NORMAL_COLOR)
 
         # start the ball rolling
         self.work()
-        self.check_interval = self.CHK_INT
+        self.check_interval = CHK_INT
         self.after(self.check_interval, self.tick)
 
-    def reset_duration(self, _dummy):
+    def reset_duration(self, _dummy) -> None:
         """reset work/rest interval lengths to current scale values"""
         wtime = self.work_scl.get()
         self.workmeter.set_range(self.workmeter.min,
@@ -258,34 +263,29 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.then += delta * 60
         self.old_work = wtime
 
-    def which_state(self):
-        if self.state == self.WORKING:
-            return "working"
-        return "resting"
-
-    def work(self):
+    def work(self) -> None:
         """start the work period"""
         self.reset_warning()
         self.restmeter.reset()
-        self.state = self.WORKING
-        now = time.time()
+        self.state = wstate.WORKING
+        now = int(time.time())
         self.then = now + self.work_scl.get() * 60
         self.workmeter.set_range(now, self.then)
         self.workmeter.set(now)
         self.cover.withdraw()
 
         LOG.debug("work: state: %s now: %s then: %s",
-                  self.which_state(), hhmm(now), hhmm(self.then))
+                  self.state.value, hhmm(now), hhmm(self.then))
 
-    def warn_work_end(self):
+    def warn_work_end(self) -> None:
         """alert user that work period is almost up"""
-        self.set_background("yellow")
+        self.set_background(ALERT_COLOR)
 
-    def reset_warning(self):
+    def reset_warning(self) -> None:
         """back to plain old grey bg"""
-        self.set_background(self.bgcolor)
+        self.set_background(NORMAL_COLOR)
 
-    def set_background(self, color):
+    def set_background(self, color) -> None:
         def set_bg(w, indent=0):
             for child in w.winfo_children():
                 child["background"] = color
@@ -293,17 +293,16 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self["background"] = color
         set_bg(self)
 
-    def rest(self):
+    def rest(self) -> None:
         """overlay the screen with a window, preventing typing"""
         self.cancel_rest = 0
         self.workmeter.reset()
-        self.state = self.RESTING
-        now = time.time()
+        self.state = wstate.RESTING
+        now = int(time.time())
         self.then = now + self.rest_scl.get() * 60
         self.cover.deiconify()
         self.cover.tkraise()
-        self.resttext = (f"Rest for {self.rest_scl.get()}m00s please...")
-        self.restnote.configure(text=self.resttext)
+        self.restnote.configure(text=f"Rest for {self.rest_scl.get()}m00s please...")
         self.restmeter.set_range(now, self.then)
         self.restmeter.set(now)
         if self.style.get() == "friendly":
@@ -312,9 +311,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.cancel_button.pack_forget()
 
         LOG.debug("rest: state: %s now: %s then: %s",
-                  self.which_state(), hhmm(now), hhmm(self.then))
+                  self.state.value, hhmm(now), hhmm(self.then))
 
-    def help_(self):
+    def help_(self) -> None:
         d = simpledialog.SimpleDialog(
             self.master,
             text=usageText(),
@@ -323,7 +322,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             title="Help")
         d.go()
 
-    def get_interrupts(self):
+    def get_interrupts(self) -> int:
         """get mouse/keyboard activity info
 
         where possible, call platform-dependent routine to get mouse and
@@ -337,7 +336,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         LOG.debug("interrupts: %s", count)
         return count
 
-    def get_xprintidle(self):
+    def get_xprintidle(self) -> int:
         if self.lid_state == "closed":
             return self.idle_count
         idle_ms = int(os.popen("xprintidle").read().strip())
@@ -348,22 +347,22 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.idle_time = idle_ms
         return self.idle_count
 
-    def check_lid_state(self):
+    def check_lid_state(self) -> None:
         if os.path.exists(LID_STATE):
             with open(LID_STATE, encoding="utf-8") as lid:
                 for line in lid:
                     fields = line.strip().split()
                     if fields[0] == "state:":
-                        state = fields[1]
-                        if state != self.lid_state:
-                            LOG.debug("lid state changed: %s", state)
-                            self.lid_state = state
-                            self.lid_time = time.time()
+                        lid_state = fields[1]
+                        if lid_state != self.lid_state:
+                            LOG.debug("lid state changed: %s", lid_state)
+                            self.lid_state = lid_state
+                            self.lid_time = int(time.time())
 
-    def tick(self):
+    def tick(self) -> None:
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
-        now = time.time()
+        now = int(time.time())
         self.check_lid_state()
         interrupts = self.get_interrupts()
         if interrupts > self.interrupts:
@@ -371,9 +370,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.interrupts = interrupts
 
             LOG.debug("tick (1): state: %s now: %s then: %s",
-                      self.which_state(), hhmm(now), hhmm(self.then))
+                      self.state.value, hhmm(now), hhmm(self.then))
 
-        if self.state == self.RESTING:
+        if self.state == wstate.RESTING:
             # if there is an input interrupt since the start of the rest
             # interval extend the interval by 10 seconds
             if self.interrupt_time > self.restmeter.min:
@@ -383,24 +382,22 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.interrupt_time = self.restmeter.min
 
                 LOG.debug("tick (2): state: %s start: %s now: %s then: %s",
-                          self.which_state(), hhmm(self.restmeter.min),
+                          self.state.value, hhmm(self.restmeter.min),
                           hhmm(now), hhmm(self.then))
 
             if self.cancel_rest or now > self.then:
-                self.state = self.WORKING
+                self.state = wstate.WORKING
                 self.work()
             else:
                 self.cover.tkraise()
 
                 # update message to reflect rest time remaining
-                timeleft = int(self.then - now)
+                timeleft = self.then - now
                 minleft = timeleft // 60
                 secleft = timeleft % 60
-                self.resttext = (f"Rest for {minleft}m{secleft:02d}s please...")
-                LOG.debug(self.resttext)
-                self.restnote.configure(text=self.resttext)
+                self.restnote.configure(text=f"Rest for {minleft}m{secleft:02d}s please...")
 
-                LOG.debug("tick (4): state: %s", self.which_state())
+                LOG.debug("tick (4): state: %s", self.state.value)
 
         else:
             # if it's been at least the length of the rest interval
@@ -415,14 +412,14 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 # activity
                 self.check_interval = int(min(self.check_interval * 1.3, 5000))
             else:
-                self.check_interval = self.CHK_INT
+                self.check_interval = CHK_INT
 
             if now > self.then:
                 # work period expired
-                self.state = self.RESTING
+                self.state = wstate.RESTING
                 # reset the check interval since we may have extended it
                 # during the just ending work interval
-                self.check_interval = self.CHK_INT
+                self.check_interval = CHK_INT
                 self.rest()
             elif now + 60 > self.then:
                 # work period nearly expired - warn user
@@ -432,7 +429,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.workmeter.set(now)
         self.after(self.check_interval, self.tick)
 
-    def cancel(self):
+    def cancel(self) -> None:
         self.cancel_rest = 1
 
 def hhmm(t):
@@ -440,7 +437,7 @@ def hhmm(t):
 
 
 FORMAT = '{asctime} {levelname} {message}'
-def main(args):
+def main(args) -> int:
     work, rest, geometry, fascist, debug = parse(args)
     logging.basicConfig(
         level="DEBUG" if debug else "INFO",
@@ -453,19 +450,23 @@ def main(args):
         app.geometry(geometry)
     task = Task(master=app, work=work, rest=rest, fascist=fascist, debug=debug)
     task.pack()
+
+    app.wait_visibility()
+    os.system("wmctrl -r 'Typing Watcher' -b add,sticky")
+
     app.mainloop()
+    return 0
 
-
-def usage(name):
+def usage(name : str) -> None:
     print("Usage", name, file=sys.stderr)
     print(usageText(), file=sys.stderr)
     sys.exit()
 
 
-def usageText():
+def usageText() -> str:
     return __doc__.format(**globals())
 
-def parse(args):
+def parse(args) -> Tuple[float, float, str, bool, bool]:
     opts = getopt.getopt(args[1:], "dhw:r:g:f",
                          ['debug', 'help', 'work=', 'rest=', 'geometry=',
                           'friendly', 'fascist'])
@@ -475,14 +476,14 @@ def parse(args):
     work = 10.0
     rest = 3.0
     geometry = ""
-    debug = 0
+    debug = False
     fascist = True
 
     for opt, val in options:
         if opt in ['-h', '--help']:
             usage(args[0])
         elif opt in ['-d', '--debug']:
-            debug = 1
+            debug = True
         elif opt in ['-w', '--work']:
             work = float(val)
         elif opt in ['-r', '--rest']:
