@@ -451,6 +451,8 @@ def main(args) -> int:
     task = Task(master=app, work=work, rest=rest, fascist=fascist, debug=debug)
     task.pack()
 
+    # Thanks to the python-list@python.org peeps for this bit of
+    # window manager magic, esp Cameron Simpson.
     app.wait_visibility()
     os.system("wmctrl -r 'Typing Watcher' -b add,sticky")
 
