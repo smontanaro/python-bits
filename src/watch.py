@@ -59,6 +59,7 @@ Emacs and XEmacs::
 
 """
 
+import asyncio
 import enum
 import getopt
 import logging
@@ -72,6 +73,8 @@ from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
 #                      simpledialog)
 # from tkinter.ttk import (Frame, Label, Scale, Button, Frame, Radiobutton)
 from typing import Tuple
+
+import pynput
 
 LID_STATE = "/proc/acpi/button/lid/LID0/state"
 WORK_TM = 10
@@ -145,13 +148,35 @@ class wstate(enum.Enum):
     WORKING = "working"
     RESTING = "resting"
 
+class AsyncTk(Tk):
+    "Basic Tk with an asyncio-compatible event loop"
+    def __init__(self):
+        super().__init__()
+        self.running = True
+        self.runners = [self.tk_loop()]
+
+    async def tk_loop(self):
+        "asyncio 'compatible' tk event loop?"
+        # Is there a better way to trigger loop exit than using a state vrbl?
+        while self.running:
+            self.update()
+            await asyncio.sleep(0.05) # obviously, sleep time could be parameterized
+
+    def stop(self):
+        self.running = False
+
+    async def run(self):
+        await asyncio.gather(*self.runners)
+
+
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
 
-    def __init__(self, master=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0) -> None:
+    def __init__(self, parent=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0) -> None:
         """create the task widget and get things started"""
 
         # various inits
+        self.parent = parent
         self.old_work = 0.0
         self.then = 0
         self.state = wstate.WORKING
@@ -161,7 +186,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.idle_time = 99999
         self.idle_count = 0
 
-        Frame.__init__(*(self, master))
+        Frame.__init__(*(self, parent))
 
         self.style = StringVar()
         self.style.set("fascist" if fascist else "friendly")
@@ -207,10 +232,21 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         f4.pack()
         restb = Button(f4, text="Rest", command=self.rest)
         restb.pack(side=LEFT)
-        stop = Button(f4, text="Quit", command=self.quit)
+        stop = Button(f4, text="Quit", command=parent.stop)
         stop.pack(side=LEFT)
         help_ = Button(f4, text="Help", command=self.help_)
         help_.pack(side=LEFT)
+
+        self.keys = []
+        kb_listen = pynput.keyboard.Listener(on_press=self.handle_input,
+                                             on_release=self.handle_input)
+        kb_listen.daemon = True
+        kb_listen.start()
+        mouse_listen = pynput.mouse.Listener(on_click=self.handle_input,
+                                             on_scroll=self.handle_input,
+                                             on_move=self.handle_input)
+        mouse_listen.daemon = True
+        mouse_listen.start()
 
         # create the cover window
         self.cover = Toplevel(background="black")
@@ -236,8 +272,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         f.pack()
 
         # initialize interrupt information
-        self.interrupt_time = int(time.time())
-        self.interrupts = self.get_interrupts()
+        self.last_input_time = int(time.time())
 
         self.set_background(NORMAL_COLOR)
 
@@ -315,37 +350,12 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def help_(self) -> None:
         d = simpledialog.SimpleDialog(
-            self.master,
+            self.parent,
             text=usageText(),
             buttons=["Done"],
             default=0,
             title="Help")
         d.go()
-
-    def get_interrupts(self) -> int:
-        """get mouse/keyboard activity info
-
-        where possible, call platform-dependent routine to get mouse and
-        keyboard info, otherwise, just return mouse info
-
-        in all cases, the value returned should be a value that increases
-        monotonically with activity
-        """
-        # This is all I need now...
-        count = self.get_xprintidle()
-        LOG.debug("interrupts: %s", count)
-        return count
-
-    def get_xprintidle(self) -> int:
-        if self.lid_state == "closed":
-            return self.idle_count
-        idle_ms = int(os.popen("xprintidle").read().strip())
-        LOG.debug("idle_ms: %d, idle_time: %d, idle_count: %d",
-                  idle_ms, self.idle_time, self.idle_count)
-        if idle_ms < self.idle_time:
-            self.idle_count += 1
-        self.idle_time = idle_ms
-        return self.idle_count
 
     def check_lid_state(self) -> None:
         if os.path.exists(LID_STATE):
@@ -364,22 +374,15 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # check for mouse or keyboard activity
         now = int(time.time())
         self.check_lid_state()
-        interrupts = self.get_interrupts()
-        if interrupts > self.interrupts:
-            self.interrupt_time = now
-            self.interrupts = interrupts
-
-            LOG.debug("tick (1): state: %s now: %s then: %s",
-                      self.state.value, hhmm(now), hhmm(self.then))
 
         if self.state == wstate.RESTING:
             # if there is an input interrupt since the start of the rest
             # interval extend the interval by 10 seconds
-            if self.interrupt_time > self.restmeter.min:
+            if self.last_input_time > self.restmeter.min:
                 self.then = self.then + 10
                 self.restmeter.set_range(self.restmeter.min, self.then)
                 self.restmeter.set(now)
-                self.interrupt_time = self.restmeter.min
+                self.last_input_time = self.restmeter.min
 
                 LOG.debug("tick (2): state: %s start: %s now: %s then: %s",
                           self.state.value, hhmm(self.restmeter.min),
@@ -402,10 +405,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         else:
             # if it's been at least the length of the rest interval
             # since new interrupt, reset the work interval
-            if self.interrupt_time + self.rest_scl.get() * 60 < now:
+            if self.last_input_time + self.rest_scl.get() * 60 < now:
                 self.work()
 
-            if self.interrupt_time < now:
+            if self.last_input_time < now:
                 # work interval can extend for long periods of time during
                 # idle periods, so back off on the check interval to a
                 # maximum of once every five seconds as long as there is no
@@ -432,23 +435,29 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def cancel(self) -> None:
         self.cancel_rest = 1
 
+    def handle_input(self, *_args):
+        "handle all keyboard & mouse activity"
+        # don't care about the actual events, just update interrupt time
+        self.last_input_time = int(time.time())
+
+
 def hhmm(t):
     return time.strftime("%H:%M:%S", time.localtime(t))
 
 
 FORMAT = '{asctime} {levelname} {message}'
-def main(args) -> int:
+async def main(args) -> int:
     work, rest, geometry, fascist, debug = parse(args)
     logging.basicConfig(
         level="DEBUG" if debug else "INFO",
         style='{',
         format=FORMAT
     )
-    app = Tk()
+    app = AsyncTk()
     app.title("Typing Watcher")
     if geometry:
         app.geometry(geometry)
-    task = Task(master=app, work=work, rest=rest, fascist=fascist, debug=debug)
+    task = Task(parent=app, work=work, rest=rest, fascist=fascist, debug=debug)
     task.pack()
 
     # Thanks to the python-list@python.org peeps for this bit of
@@ -456,7 +465,7 @@ def main(args) -> int:
     app.wait_visibility()
     os.system("wmctrl -r 'Typing Watcher' -b add,sticky")
 
-    app.mainloop()
+    await app.run()
     return 0
 
 def usage(name : str) -> None:
@@ -506,5 +515,5 @@ def parse(args) -> Tuple[float, float, str, bool, bool]:
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    asyncio.run(main(sys.argv))
     sys.exit()
