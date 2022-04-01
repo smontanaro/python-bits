@@ -23,39 +23,9 @@ window.  In friendly mode, a cancel button is available to allow the user to
 prematurely terminate the rest interval. The user interface includes a rest
 button to allow the user to immediately end the current work interval.
 
-Activity of the mouse and possibly the keyboard is tracked.  Mouse position
-can be determined via Tk, but monitoring keyboard activity is not currently
-possible in a platform-independent way. During the work interval, if no
-activity is sensed for at least the duration of the rest interval, the work
-interval is reset and the user can continue working.  It is not always
-possible to track keystrokes, but in these days of graphical user
-interfaces, it is unlikely the mouse will stay put for long if the user is
-actively using the computer.
-
-If no direct detection of keyboard activity is possible on your platform but
-you have Emacs available, you can add an auto-save-hook that jiggles the
-pointer by a few pixels so the typing watcher will notice the activity.  It
-toggles the jiggle direction so that the next time it jiggles the mouse the
-other way.  The following code uses set-mouse-pixel-position and
-mouse-pixel-position which are both available in recent versions of GNU
-Emacs and XEmacs::
-
-    (setq pointer-jiggle-val 3)
-    (defun jiggle-mouse ()
-      (if window-system
-          (progn
-            (let ((pos (mouse-pixel-position))
-                  win x y)
-              (setq win (car pos))
-              (if (and (not (eq win nil)) (not (eq '(nil) (cdr pos))))
-                  (progn
-                    (setq x (car (cdr pos)))
-                    (setq y (cdr (cdr pos)))
-                    (set-mouse-pixel-position win (+ pointer-jiggle-val x) y)
-                    (setq pointer-jiggle-val (* -1 pointer-jiggle-val))))))))
-
-    (setq auto-save-hook '(jiggle-mouse))
-    (setq after-save-hook '(jiggle-mouse))
+Activity of the mouse and keyboard is tracked using pynput. I have no
+idea how platform-independent that is. At the moment, my only platform
+is XUbuntu running Xorg.
 
 """
 
@@ -68,10 +38,6 @@ import sys
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
-# # Eventually?
-# from tkinter import (Canvas, StringVar, Tk, Toplevel, LEFT, HORIZONTAL,
-#                      simpledialog)
-# from tkinter.ttk import (Frame, Label, Scale, Button, Frame, Radiobutton)
 from typing import Tuple
 
 import pynput
@@ -369,6 +335,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                             self.lid_state = lid_state
                             self.lid_time = int(time.time())
 
+    # I should redo tick() to use asyncio I suppose
     def tick(self) -> None:
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
