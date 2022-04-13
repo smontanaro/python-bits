@@ -13,7 +13,8 @@
 --geometry=geo - geometry in typical X fashion
 --fascist      - set initial style to 'fascist'
 --friendly     - set initial style to 'friendly'
--f             - toggle fascist setting (defaults to True)
+-f             - toggle fascist setting between fascist and friendly
+--debug        - debug logging
 
 Watch is a Tk-based program that monitors work and rest times for keyboard
 and mouse use to help users avoid overuse that can lead to or exacerbate
@@ -147,8 +148,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.then = 0
         self.state = wstate.WORKING
         self.cancel_rest = 0
-        self.lid_state = "open"
-        self.lid_time = int(time.time())
         self.idle_time = 99999
         self.idle_count = 0
 
@@ -323,24 +322,16 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             title="Help")
         d.go()
 
-    def check_lid_state(self) -> None:
-        if os.path.exists(LID_STATE):
-            with open(LID_STATE, encoding="utf-8") as lid:
-                for line in lid:
-                    fields = line.strip().split()
-                    if fields[0] == "state:":
-                        lid_state = fields[1]
-                        if lid_state != self.lid_state:
-                            LOG.debug("lid state changed: %s", lid_state)
-                            self.lid_state = lid_state
-                            self.lid_time = int(time.time())
-
     # I should redo tick() to use asyncio I suppose
     def tick(self) -> None:
         """perform periodic checks for activity or state switch"""
         # check for mouse or keyboard activity
         now = int(time.time())
-        self.check_lid_state()
+        if (self.state == wstate.RESTING and
+            now - self.last_input_time > self.rest_scl.get() * 60):
+            # This might happen afte the computer wakes from sleep.
+            LOG.debug("last input_time: %ds ago", now - self.last_input_time)
+            self.work()
 
         if self.state == wstate.RESTING:
             # if there is an input interrupt since the start of the rest
