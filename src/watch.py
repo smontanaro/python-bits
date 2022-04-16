@@ -139,7 +139,8 @@ class AsyncTk(Tk):
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
 
-    def __init__(self, parent=None, work=WORK_TM, rest=REST_TM, fascist=True, debug=0) -> None:
+    def __init__(self, parent=None, work=WORK_TM, rest=REST_TM, fascist=True,
+                 debug=False) -> None:
         """create the task widget and get things started"""
 
         # various inits
@@ -147,9 +148,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.old_work = 0.0
         self.then = 0
         self.state = wstate.WORKING
-        self.cancel_rest = 0
-        self.idle_time = 99999
-        self.idle_count = 0
+        self.cancel_rest = False
 
         Frame.__init__(*(self, parent))
 
@@ -186,21 +185,16 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
         f3 = Frame(self)
         f3.pack()
-        dictator = Radiobutton(
-            f3, text="Fascist", variable=self.style, value="fascist")
-        friend = Radiobutton(
-            f3, text="Friendly", variable=self.style, value="friendly")
-        dictator.pack(side=LEFT)
-        friend.pack(side=LEFT)
+        Radiobutton(f3, text="Fascist", variable=self.style,
+                    value="fascist").pack(side=LEFT)
+        Radiobutton(f3, text="Friendly", variable=self.style,
+                    value="friendly").pack(side=LEFT)
 
         f4 = Frame(self)
         f4.pack()
-        restb = Button(f4, text="Rest", command=self.rest)
-        restb.pack(side=LEFT)
-        stop = Button(f4, text="Quit", command=parent.stop)
-        stop.pack(side=LEFT)
-        help_ = Button(f4, text="Help", command=self.help_)
-        help_.pack(side=LEFT)
+        Button(f4, text="Rest", command=self.rest).pack(side=LEFT)
+        Button(f4, text="Quit", command=parent.stop).pack(side=LEFT)
+        Button(f4, text="Help", command=self.help_).pack(side=LEFT)
 
         self.keys = []
         kb_listen = pynput.keyboard.Listener(on_press=self.handle_input,
@@ -295,7 +289,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def rest(self) -> None:
         """overlay the screen with a window, preventing typing"""
-        self.cancel_rest = 0
+        self.cancel_rest = False
         self.workmeter.reset()
         self.state = wstate.RESTING
         now = int(time.time())
@@ -316,7 +310,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def help_(self) -> None:
         d = simpledialog.SimpleDialog(
             self.parent,
-            text=usageText(),
+            text=usage_text(),
             buttons=["Done"],
             default=0,
             title="Help")
@@ -391,7 +385,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.after(self.check_interval, self.tick)
 
     def cancel(self) -> None:
-        self.cancel_rest = 1
+        self.cancel_rest = True
 
     def handle_input(self, *_args):
         "handle all keyboard & mouse activity"
@@ -428,11 +422,11 @@ async def main(args) -> int:
 
 def usage(name : str) -> None:
     print("Usage", name, file=sys.stderr)
-    print(usageText(), file=sys.stderr)
+    print(usage_text(), file=sys.stderr)
     sys.exit()
 
 
-def usageText() -> str:
+def usage_text() -> str:
     return __doc__.format(**globals())
 
 def parse(args) -> Tuple[float, float, str, bool, bool]:
@@ -469,7 +463,7 @@ def parse(args) -> Tuple[float, float, str, bool, bool]:
     if rest > work:
         usage(args[0])
 
-    return work, rest, geometry, fascist, debug
+    return (work, rest, geometry, fascist, debug)
 
 
 if __name__ == "__main__":
