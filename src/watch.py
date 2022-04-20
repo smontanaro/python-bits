@@ -196,7 +196,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         Button(f4, text="Quit", command=parent.stop).pack(side=LEFT)
         Button(f4, text="Help", command=self.help_).pack(side=LEFT)
 
-        self.keys = []
         kb_listen = pynput.keyboard.Listener(on_press=self.handle_input,
                                              on_release=self.handle_input)
         kb_listen.daemon = True
@@ -323,7 +322,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         now = int(time.time())
         if (self.state == wstate.RESTING and
             now - self.last_input_time > self.rest_scl.get() * 60):
-            # This might happen afte the computer wakes from sleep.
+            # This might happen after the computer wakes from sleep.
             LOG.debug("last input_time: %ds ago", now - self.last_input_time)
             self.work()
 
