@@ -24,17 +24,19 @@ Exported symbols:
 
 """
 
+import re as _re
+
+__all__ = ["FSM", "FSMError", "RestartError", "FSMEOF"]
+
 class FSMError(Exception):
-    pass
+    "Raised when the machine detects an error"
 
 class RestartError(Exception):
-    pass
+    "raised by an action routine to bail back to a restart state"
 
 FSMEOF = -1
 
-import re
-_RGXT = type(re.compile('foo'))
-del re
+_RGXT = type(_re.compile('foo'))
 
 class FSM:
     """
@@ -42,12 +44,12 @@ class FSM:
     simple example:
 
     >>> def do_faq(state, input):
-    ...   print 'send faqfile'
+    ...   print('send faqfile')
     >>> def do_help(state, input):
-    ...   print 'send helpfile'
+    ...   print('send helpfile')
     >>> def cleanup(state, input):
-    ...   print 'clean up'
-    >>> import re
+    ...   print('clean up')
+    >>> import re, sys
     >>> fsm = FSM()
     >>> fsm.add('start', re.compile('help', re.I), 'start', do_help)
     >>> fsm.add('start', 'faq', 'start', do_faq)
@@ -59,7 +61,7 @@ class FSM:
     ...   try:
     ...     fsm.execute(line)
     ...   except FSMError:
-    ...     sys.stderr.write('Invalid input: %r' % line)
+    ...     print(f'Invalid input: {line!r}', file=sys.stderr)
     ...
     send faqfile
     send helpfile
@@ -72,6 +74,7 @@ class FSM:
         self.dbg = None
 
     # add another state to the fsm
+    #pylint: disable=redefined-builtin
     def add(self, state, input, newstate, action=None):
         """add a new state to the state machine"""
         try:
@@ -81,11 +84,12 @@ class FSM:
             self.states[state][input] = (newstate, action)
 
     # perform a state transition and action execution
+    #pylint: disable=redefined-builtin
     def execute(self, input):
         """execute the action for the current (state,input) pair"""
 
         if self.state not in self.states:
-            raise FSMError('Invalid state: %s' % self.state)
+            raise FSMError(f'Invalid state: {self.state}')
 
         state = self.states[self.state]
         # exact state match?
@@ -94,7 +98,7 @@ class FSM:
             if action is not None:
                 try:
                     action(self.state, input)
-                except RestartError, restartto:
+                except RestartError as restartto:
                     # action routine can raise RestartError to force
                     # jump to a different state - usually back to start
                     # if input didn't look like it was supposed to
@@ -104,28 +108,13 @@ class FSM:
             return
 
         # no, how about a regex match? (first match wins)
-        else:
-            for s in state:
-                if isinstance(s, _RGXT) and s.match(input) is not None:
-                    newstate, action = state[s]
-                    if action is not None:
-                        try:
-                            action(self.state, input)
-                        except RestartError, restartto:
-                            # action routine can raise RestartError to force
-                            # jump to a different state - usually back to start
-                            # if input didn't look like it was supposed to
-                            self.state = restartto
-                            return
-                    self.state = newstate
-                    return
-
-            if None in state:
-                newstate, action = state[None]
+        for s in state:
+            if isinstance(s, _RGXT) and s.match(input) is not None:
+                newstate, action = state[s]
                 if action is not None:
                     try:
                         action(self.state, input)
-                    except RestartError, restartto:
+                    except RestartError as restartto:
                         # action routine can raise RestartError to force
                         # jump to a different state - usually back to start
                         # if input didn't look like it was supposed to
@@ -134,10 +123,22 @@ class FSM:
                 self.state = newstate
                 return
 
-            # oh well, bombed out...
-            else:
-                raise FSMError('Invalid input to finite state machine: %s' %
-                               input)
+        if None in state:
+            newstate, action = state[None]
+            if action is not None:
+                try:
+                    action(self.state, input)
+                except RestartError as restartto:
+                    # action routine can raise RestartError to force
+                    # jump to a different state - usually back to start
+                    # if input didn't look like it was supposed to
+                    self.state = restartto
+                    return
+            self.state = newstate
+            return
+
+        # oh well, bombed out...
+        raise FSMError(f'Invalid input to finite state machine: {input}')
 
     # define the start state
     def start(self, state):
