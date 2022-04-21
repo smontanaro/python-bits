@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 simpleminded session save/restore based on an idea by Gerrit Holl
 
@@ -17,8 +19,8 @@ __all__ = ['mark', 'save', 'load']
 
 try:
     import readline
-except ImportError:
-    raise ImportError, "session save/restore requires readline module"
+except ImportError as exc:
+    raise ImportError("session save/restore requires readline module") from exc
 
 import os
 import sys
@@ -42,19 +44,24 @@ def save():
         session.insert(0, item+"\n")
         end -= 1
         item = readline.get_history_item(end)
-        
-    file(_session_file, 'w').writelines(session)
-    print >> sys.stderr, "saved session to", _session_file
+
+    with open(_session_file, 'w', encoding="utf-8") as fobj:
+        fobj.writelines(session)
+    print("saved session to", _session_file, file=sys.stderr)
 
 def load():
     """load the last session saved by a call to save()"""
     try:
-        execfile(_session_file, sys._getframe(1).f_globals)
+        with open(_session_file, "r", encoding="utf-8") as fobj:
+            # pylint: disable=protected-access,exec-used
+            exec(compile(fobj.read(), _session_file, 'exec'),
+                 sys._getframe(1).f_globals)
+    # pylint: disable=bare-except
     except:
-        print >> sys.stderr, ("Session load failed. Check for error in %s" %
-                              _session_file)
+        print("Session load failed. Check for error in", _session_file,
+              file=sys.stderr)
     else:
-        print >> sys.stderr, "loaded session from", _session_file
+        print("loaded session from", _session_file, file=sys.stderr)
 
 def mark():
     """mark the start of a new session to save later"""
