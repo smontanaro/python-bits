@@ -46,6 +46,7 @@ def save():
         item = readline.get_history_item(end)
 
     with open(_session_file, 'w', encoding="utf-8") as fobj:
+        fobj.write("#!/usr/bin/env python3\n")
         fobj.writelines(session)
     print("saved session to", _session_file, file=sys.stderr)
 
