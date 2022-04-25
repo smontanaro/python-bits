@@ -163,6 +163,8 @@ class WakeSuspend:
                 self.add_event(what, dateutil.parser.parse(stamp))
         LOG.debug("last sleep time: %s", self.wake - self.suspend)
 
+    def last_wake(self):
+        return self.wake
 
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
@@ -320,7 +322,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # idle periods, so back off on the check interval to a
         # maximum of once every five seconds as long as there is no
         # activity
+        chkint = self.check_interval
         self.check_interval = int(min(self.check_interval * 1.3, 5000))
+        if self.check_interval > chkint:
+            LOG.debug("Extend interval to %s", self.check_interval)
 
     def set_background(self, color) -> None:
         def set_bg(w, indent=0):
@@ -372,8 +377,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             if now - self.last_input_time >= 60:
                 self.then += 60
                 LOG.debug("add a minute to work interval (%d)", self.then)
-                # fudge an input
-                self.last_input_time = now - 1
                 self.workmeter.set_range(now, self.then)
                 self.workmeter.set(now)
                 self.reset_warning()
@@ -383,11 +386,13 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             elif now + 60 > self.then:
                 self.warn_work_end()
             else:
+                LOG.debug("status (working) quo")
                 self.extend_check_interval()
 
         elif self.state == wstate.RESTING:
-            if self.last_input_time >= self.restmeter.min:
-                LOG.debug("you tried to cheat but I caught you!")
+            if self.last_input_time > self.restmeter.min:
+                LOG.debug("you cheated but I caught you! %s >= %s",
+                          self.last_input_time, self.restmeter.min)
                 # extend rest interval
                 self.then += 10
                 self.restmeter.set_range(self.restmeter.min, self.then)
@@ -405,6 +410,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 minleft = timeleft // 60
                 secleft = timeleft % 60
                 self.restnote.configure(text=f"Rest for {minleft}m{secleft:02d}s please...")
+                LOG.debug("status (resting) quo")
                 self.extend_check_interval()
 
         else:
