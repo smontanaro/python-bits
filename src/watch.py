@@ -47,6 +47,8 @@ import pynput
 
 SUSP_FILE = "/tmp/suspensions"
 EPOCH = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
+ONE_MINUTE = datetime.timedelta(seconds=60)
+
 WORK_TM = 10
 REST_TM = 3
 PROG = os.path.split(sys.argv[0])[-1]
@@ -139,7 +141,7 @@ class AsyncTk(Tk):
         await asyncio.gather(*self.runners)
 
 
-class WakeSuspend:
+class SuspendTracker:
     "track most recent wakeup and suspension"
     def __init__(self):
         self.suspend = EPOCH
@@ -161,7 +163,7 @@ class WakeSuspend:
                 LOG.debug("tell: %s, suspension: %r", self.tell, line)
                 stamp, what, _action = line.strip().split()
                 self.add_event(what, dateutil.parser.parse(stamp))
-        LOG.debug("last sleep time: %s", self.last_sleep_length)
+        LOG.debug("last sleep time: %s", self.last_sleep_length())
 
     def last_wake(self):
         return self.wake
@@ -183,7 +185,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.state = wstate.WORKING
         self.cancel_rest = False
         self.warned = False
-        self.wake_suspend = WakeSuspend()
+        self.tracker = SuspendTracker()
         self.idle_minutes = 0
         Frame.__init__(*(self, parent))
 
@@ -372,11 +374,13 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def tick(self) -> None:
         """perform periodic checks for activity or state switch"""
-        # check for mouse or keyboard activity
+        # XXX need to get rid of reliance on time.time()
         now = int(time.time())
+        nowdt = datetime.datetime.now(tz=datetime.timezone.utc)
+
         LOG.debug("tick, last input @ %s",
                   datetime.datetime.fromtimestamp(self.last_input_time))
-        self.wake_suspend.check_suspensions()
+        self.tracker.check_suspensions()
 
         if self.state == wstate.WORKING:
             if now - self.last_input_time >= 60 * (self.idle_minutes + 1):
@@ -391,8 +395,16 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                     self.workmeter.set(now)
                     self.reset_warning()
             elif now >= self.then:
-                LOG.debug("time's up!")
-                self.rest()
+                # Heuristic: If the last wake time was very recent but the
+                # last sleep time was at least as long as the rest interval,
+                # make sure we are working, not resting.
+                if (nowdt - self.tracker.last_wake() < ONE_MINUTE and
+                    self.tracker.last_sleep_length() >= ONE_MINUTE * self.rest_scl.get()):
+                    LOG.debug("Long suspension - reset work interval")
+                    self.work()
+                else:
+                    LOG.debug("time's up!")
+                    self.rest()
             elif now + 60 > self.then:
                 self.warn_work_end()
             else:
