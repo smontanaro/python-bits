@@ -331,8 +331,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # activity
         chkint = self.check_interval
         self.check_interval = int(min(self.check_interval * 1.3, 5000))
-        if self.check_interval > chkint:
-            LOG.debug("Extend interval to %s", self.check_interval)
 
     def set_background(self, color) -> None:
         def set_bg(w, indent=0):
@@ -408,11 +406,13 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             elif now + 60 > self.then:
                 self.warn_work_end()
             else:
-                LOG.debug("status (working) quo")
                 self.extend_check_interval()
 
         elif self.state == wstate.RESTING:
-            if self.last_input_time > self.restmeter.min:
+            if self.cancel_rest:
+                LOG.debug("rest canceled.")
+                self.work()
+            elif self.last_input_time > self.restmeter.min:
                 LOG.debug("you cheated but I caught you! %s >= %s",
                           self.last_input_time, self.restmeter.min)
                 # extend rest interval
@@ -432,7 +432,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 minleft = timeleft // 60
                 secleft = timeleft % 60
                 self.restnote.configure(text=f"Rest for {minleft}m{secleft:02d}s please...")
-                LOG.debug("status (resting) quo")
                 self.extend_check_interval()
 
         else:
