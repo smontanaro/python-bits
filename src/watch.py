@@ -111,7 +111,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
 
 LOG = logging.getLogger(__name__)
 
-CHK_INT = 500                   # milliseconds
+CHK_INT = 100                   # milliseconds
 
 class wstate(enum.Enum):
     "state of the interface"
@@ -161,10 +161,13 @@ class WakeSuspend:
                 LOG.debug("tell: %s, suspension: %r", self.tell, line)
                 stamp, what, _action = line.strip().split()
                 self.add_event(what, dateutil.parser.parse(stamp))
-        LOG.debug("last sleep time: %s", self.wake - self.suspend)
+        LOG.debug("last sleep time: %s", self.last_sleep_length)
 
     def last_wake(self):
         return self.wake
+
+    def last_sleep_length(self):
+        return self.wake - self.suspend
 
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
@@ -181,6 +184,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.cancel_rest = False
         self.warned = False
         self.wake_suspend = WakeSuspend()
+        self.idle_minutes = 0
         Frame.__init__(*(self, parent))
 
         self.style = StringVar()
@@ -289,6 +293,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def work(self) -> None:
         """start the work period"""
+        self.idle_minutes = 0
         self.reset_warning()
         self.restmeter.reset()
         self.state = wstate.WORKING
@@ -374,12 +379,17 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.wake_suspend.check_suspensions()
 
         if self.state == wstate.WORKING:
-            if now - self.last_input_time >= 60:
-                self.then += 60
-                LOG.debug("add a minute to work interval (%d)", self.then)
-                self.workmeter.set_range(now, self.then)
-                self.workmeter.set(now)
-                self.reset_warning()
+            if now - self.last_input_time >= 60 * (self.idle_minutes + 1):
+                self.idle_minutes += 1
+                LOG.debug("idle minutes: %d, idle time: %d, work scale len: %d",
+                          self.idle_minutes, now - self.last_input_time,
+                          self.work_scl.get())
+                if (now - self.last_input_time) / 60 < self.work_scl.get():
+                    self.then += 60
+                    LOG.debug("add a minute to work interval (%d)", self.then)
+                    self.workmeter.set_range(now, self.then)
+                    self.workmeter.set(now)
+                    self.reset_warning()
             elif now >= self.then:
                 LOG.debug("time's up!")
                 self.rest()
@@ -427,6 +437,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def handle_input(self, *_args):
         "handle all keyboard & mouse activity"
         # don't care about the actual events, just update interrupt time
+        if self.idle_minutes:
+            LOG.debug("reset idle minutes count")
+        self.idle_minutes = 0
         self.last_input_time = int(time.time())
         self.check_interval = CHK_INT
 
