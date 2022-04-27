@@ -38,6 +38,7 @@ import getopt
 import logging
 import os
 import sys
+import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
 from typing import Tuple
@@ -51,6 +52,7 @@ START = datetime.datetime.now(tz=datetime.timezone.utc)
 EPOCH = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
 ONE_MINUTE = datetime.timedelta(seconds=60)
 ONE_SECOND = datetime.timedelta(seconds=1)
+ZERO_SECOND = datetime.timedelta(seconds=0)
 
 WORK_TM = 10
 REST_TM = 3
@@ -195,7 +197,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.warned = False
         self.tracker = SuspendTracker()
         # how long we've been idle, in whole minutes
-        self.idle_minutes = datetime.timedelta(0)
+        self.idle_minutes = ZERO_SECOND
         # when the latest rest period started
         self.rest_start = now()
         Frame.__init__(*(self, parent))
@@ -305,7 +307,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def work(self) -> None:
         """start the work period"""
-        self.idle_minutes = datetime.timedelta(0)
+        self.idle_minutes = ZERO_SECOND
         self.reset_warning()
         self.restmeter.reset()
         self.state = wstate.WORKING
@@ -390,74 +392,86 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         LOG.debug("tick, last input @ %s", self.last_input_time.time())
         self.tracker.check_suspensions()
         self.extend_check_interval()
+        seconds = epoch_seconds(now())
 
         if self.state == wstate.WORKING:
-            if now() - self.last_input_time >= self.idle_minutes + ONE_MINUTE:
-                self.idle_minutes += ONE_MINUTE
-                LOG.debug("idle minutes: %s, idle time: %s, work len: %dm",
-                          self.idle_minutes, now() - self.last_input_time,
-                          self.work_scl.get())
-                if (now() - self.last_input_time <
-                    datetime.timedelta(minutes=self.work_scl.get())):
-                    self.then += ONE_MINUTE
-                    LOG.debug("add a minute to work interval (%s)",
-                              self.then.time())
-                    seconds = epoch_seconds(now())
-                    self.workmeter.set_range(seconds, epoch_seconds(self.then))
-                    self.workmeter.set(seconds)
-                    self.reset_warning()
-            elif now() >= self.then:
-                # Heuristic: If the last wake time was very recent but the
-                # last sleep time was at least as long as the rest interval,
-                # make sure we are working, not resting.
-                if (now() - self.tracker.last_wake() < ONE_MINUTE and
-                    self.tracker.last_sleep_length() >= ONE_MINUTE * self.rest_scl.get()):
-                    LOG.debug("Long suspension - reset work interval")
-                    self.work()
-                else:
-                    LOG.debug("time's up!")
-                    self.rest()
-            elif now() + ONE_MINUTE > self.then:
-                self.warn_work_end()
-
+            self.work_tick()
         elif self.state == wstate.RESTING:
-            if self.cancel_rest:
-                LOG.debug("rest canceled.")
-                self.work()
-            elif self.last_input_time > self.rest_start:
-                LOG.debug("you cheated but I caught you! %s > %s",
-                          self.last_input_time.time(), self.rest_start.time())
-                # extend rest interval
-                self.rest_start = self.last_input_time + ONE_SECOND
-                self.then += 10 * ONE_SECOND
-                self.restmeter.set_range(self.restmeter.min,
-                                         epoch_seconds(self.then))
-                self.restmeter.set(self.restmeter.min)
-                self.last_input_time = now()
-                self.cover.tkraise()
-                self.check_interval = CHK_INT
-            elif self.last_input_time + self.rest_scl.get() * ONE_MINUTE < now():
-                LOG.debug("thanks for resting, you can work again.")
-                self.work()
-            else:
-                self.cover.tkraise()
-
-            if self.state == wstate.RESTING:
-                # update message to reflect rest time remaining
-                timeleft = int(round((self.then - now()).total_seconds()))
-                minleft = timeleft // 60
-                secleft = timeleft % 60
-                msg = f"Rest for {minleft}m{secleft:02d}s please..."
-                self.restnote.configure(text=msg)
-
+            self.rest_tick()
         else:
             LOG.error("unknown state: %r", self.state)
             raise ValueError(f"unknown state {self.state!r}")
 
-        seconds = epoch_seconds(now())
         self.restmeter.set(seconds)
         self.workmeter.set(seconds)
         self.after(self.check_interval, self.tick)
+
+    def work_tick(self):
+        work_len = ONE_MINUTE * self.work_scl.get()
+        rest_len = ONE_MINUTE * self.rest_scl.get()
+        now_ = now()
+        seconds = epoch_seconds(now_)
+        if now_ - self.last_input_time >= self.idle_minutes + ONE_MINUTE:
+            self.idle_minutes += ONE_MINUTE
+            LOG.debug("idle minutes: %s, idle time: %s, work len: %s",
+                      self.idle_minutes, now_ - self.last_input_time,
+                      work_len)
+            if self.idle_minutes >= work_len:
+                LOG.debug("Long idle time - reset work interval")
+                self.work()
+            elif now_ - self.last_input_time < work_len:
+                self.then += ONE_MINUTE
+                LOG.debug("add a minute to work interval (%s)",
+                          self.then.time())
+                self.workmeter.set_range(seconds, epoch_seconds(self.then))
+                self.workmeter.set(seconds)
+                self.reset_warning()
+        elif now_ >= self.then:
+            # Heuristic: If the last wake time was very recent but the
+            # last sleep time was at least as long as the rest interval,
+            # make sure we are working, not resting.
+            sleep_len = self.tracker.last_sleep_length()
+            last_wake = self.tracker.last_wake()
+            if now_ - last_wake < ONE_MINUTE and sleep_len >= rest_len:
+                LOG.debug("Long suspension - reset work interval")
+                self.work()
+            else:
+                LOG.debug("time's up!")
+                self.rest()
+        elif now_ + ONE_MINUTE > self.then:
+            self.warn_work_end()
+
+    def rest_tick(self):
+        rest_len = ONE_MINUTE * self.rest_scl.get()
+        now_ = now()
+        if self.cancel_rest:
+            LOG.debug("rest canceled.")
+            self.work()
+        elif self.last_input_time > self.rest_start:
+            LOG.debug("you cheated but I caught you! %s > %s",
+                      self.last_input_time.time(), self.rest_start.time())
+            # extend rest interval
+            self.rest_start = self.last_input_time + ONE_SECOND
+            self.then += 10 * ONE_SECOND
+            self.restmeter.set_range(self.restmeter.min,
+                                     epoch_seconds(self.then))
+            self.restmeter.set(self.restmeter.min)
+            self.last_input_time = now_
+            self.cover.tkraise()
+            self.check_interval = CHK_INT
+        elif self.last_input_time + rest_len < now_:
+            LOG.debug("thanks for resting, you can work again.")
+            self.work()
+        else:
+            self.cover.tkraise()
+
+        if self.state == wstate.RESTING:
+            # update message to reflect rest time remaining
+            timeleft = int(round((self.then - now_).total_seconds()))
+            minleft = timeleft // 60
+            secleft = timeleft % 60
+            msg = f"Rest for {minleft}m{secleft:02d}s please..."
+            self.restnote.configure(text=msg)
 
     def cancel(self) -> None:
         self.cancel_rest = True
@@ -467,7 +481,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # don't care about the actual events, just update interrupt time
         if self.idle_minutes:
             LOG.debug("reset idle minutes count")
-        self.idle_minutes = datetime.timedelta(0)
+        self.idle_minutes = ZERO_SECOND
         self.last_input_time = now()
         self.reset_check_interval()
 
@@ -488,8 +502,9 @@ async def main(args) -> int:
         level="DEBUG" if debug else "INFO",
         style='{',
         format='{asctime} {levelname} {message}'
-
     )
+    logging.Formatter.converter = time.gmtime
+
     app = AsyncTk()
     app.title("Typing Watcher")
     if geometry:
