@@ -6,16 +6,14 @@
 # $Id: watch.py,v 1.5 2000/06/18 03:42:24 skip Exp $
 
 # Updated for Python 3 2018/04/26
-"""Usage: {PROG} [ -w min ] [ -r min ] [-g geometry ] [ -h ] \\
-                 [ -f | --fascist | --friendly ]
+"""Usage: {PROG} [ --work=min ] [ --rest=min ] [-g geometry ] [ -h ] \\
+                 [ --control=style ] [ --loglevel=LEVEL ]
 
 --work=minutes - set work time in minutes (default: {WORK_TM})
 --rest=minutes - set rest time in minutes (default: {REST_TM})
 --geometry=geo - geometry in typical X fashion
---fascist      - set initial style to 'fascist'
---friendly     - set initial style to 'friendly'
--f             - toggle fascist setting between fascist and friendly
---debug        - debug logging
+--control=X    - set initial control style to X (fascist or friendly)
+--loglevel     - set log level (default {LOG_LEVEL})
 
 Watch is a Tk-based program that monitors work and rest times for keyboard
 and mouse use to help users avoid overuse that can lead to or exacerbate
@@ -23,7 +21,7 @@ repetitive strain injuries.  The user can define the duration of work and
 rest intervals.  In fascist mode, the user can't override the displayed rest
 window.  In friendly mode, a cancel button is available to allow the user to
 prematurely terminate the rest interval. The user interface includes a rest
-button to allow the user to immediately end the current work interval.
+button to allow the user to terminate the current work interval.
 
 Activity of the mouse and keyboard is tracked using pynput. I have no
 idea how platform-independent that is. At the moment, my only platform
@@ -56,6 +54,7 @@ ZERO_SECOND = datetime.timedelta(seconds=0)
 
 WORK_TM = 10
 REST_TM = 3
+LOG_LEVEL = "WARNING"
 PROG = os.path.split(sys.argv[0])[-1]
 
 NORMAL = "grey75"
@@ -249,31 +248,11 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.rest_scl.set(rest)
         self.rest_scl.pack(side=LEFT)
 
-        # fascist/friendly control
-        f3 = Frame(self)
-        f3.pack()
-        Radiobutton(f3, text="Fascist", variable=self.style,
-                    value="fascist").pack(side=LEFT)
-        Radiobutton(f3, text="Friendly", variable=self.style,
-                    value="friendly").pack(side=LEFT)
+        self.create_friendly_control()
 
-        # GUI's gotta have buttons!
-        f4 = Frame(self)
-        f4.pack()
-        Button(f4, text="Rest", command=self.rest).pack(side=LEFT)
-        Button(f4, text="Quit", command=parent.stop).pack(side=LEFT)
-        Button(f4, text="Help", command=self.help_).pack(side=LEFT)
+        self.create_buttons()
 
-        # listener threads for mouse and keyboard events
-        kb_listen = pynput.keyboard.Listener(on_press=self.handle_input,
-                                             on_release=self.handle_input)
-        kb_listen.daemon = True
-        kb_listen.start()
-        mouse_listen = pynput.mouse.Listener(on_click=self.handle_input,
-                                             on_scroll=self.handle_input,
-                                             on_move=self.handle_input)
-        mouse_listen.daemon = True
-        mouse_listen.start()
+        self.start_listeners()
 
         # cover window when resting
         self.cover = Toplevel(background="black")
@@ -303,6 +282,44 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
         # check status every now and then
         self.after(self.tick_int, self.tick)
+
+    def create_friendly_control(self):
+        "fascist/friendly control"
+        f3 = Frame(self)
+        f3.pack()
+        Radiobutton(f3, text="Fascist", variable=self.style,
+                    value="fascist").pack(side=LEFT)
+        Radiobutton(f3, text="Friendly", variable=self.style,
+                    value="friendly").pack(side=LEFT)
+
+    def create_buttons(self):
+        "GUI's gotta have buttons"
+        f4 = Frame(self)
+        f4.pack()
+        Button(f4, text="Rest", command=self.rest).pack(side=LEFT)
+        Button(f4, text="Quit", command=self.parent.stop).pack(side=LEFT)
+        Button(f4, text="Help", command=self.help_).pack(side=LEFT)
+
+    def start_listeners(self):
+        "listener threads for mouse and keyboard events"
+        def handle_input(*_args):
+            "handle all keyboard & mouse activity"
+            # don't care about the actual events, just update interrupt time
+            if self.idle_minutes:
+                LOG.info("reset idle minutes counter")
+                self.idle_minutes = ZERO_SECOND
+            self.last_input_time = now()
+            self.reset_tick_interval()
+
+        kb_listen = pynput.keyboard.Listener(on_press=handle_input,
+                                             on_release=handle_input)
+        kb_listen.daemon = True
+        kb_listen.start()
+        mouse_listen = pynput.mouse.Listener(on_click=handle_input,
+                                             on_scroll=handle_input,
+                                             on_move=handle_input)
+        mouse_listen.daemon = True
+        mouse_listen.start()
 
     def dt_to_int(self):
         "generate ints needed for bounds of meters"
@@ -355,23 +372,23 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def work(self) -> None:
         """start the work period"""
+        if self.state != wstate.WORKING:
+            LOG.info("work: state: %s now: %s end: %s",
+                     self.state.value, now().time(), self.switch.time())
         self.state = wstate.WORKING
         self.warned = False
         self.reset_tick_interval()
         self.set_work_bounds(now())
 
-        LOG.info("work: state: %s now: %s end: %s",
-                 self.state.value, now().time(), self.switch.time())
-
     def rest(self) -> None:
         """overlay the screen with a window, preventing typing"""
+        if self.state != wstate.RESTING:
+            LOG.info("rest: state: %s now: %s then: %s",
+                     self.state.value, self.switch.time(), self.end.time())
         self.state = wstate.RESTING
         self.warned = True
         self.reset_tick_interval()
         self.set_rest_bounds(now())
-
-        LOG.info("rest: state: %s now: %s then: %s",
-                 self.state.value, self.switch.time(), self.end.time())
 
     def warn_work_end(self) -> None:
         """alert user that work period is almost up"""
@@ -481,15 +498,6 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.switch += delta
         self.end += delta
 
-    def handle_input(self, *_args):
-        "handle all keyboard & mouse activity"
-        # don't care about the actual events, just update interrupt time
-        if self.idle_minutes:
-            LOG.info("reset idle minutes counter")
-            self.idle_minutes = ZERO_SECOND
-        self.last_input_time = now()
-        self.reset_tick_interval()
-
 
 def now():
     "shorthand"
@@ -502,9 +510,11 @@ def epoch_seconds(dt):
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     levels = set(a for a in dir(logging) if re.match("^[A-Z]+$", a))
     levels.discard("NOTSET")
+    parser.add_argument("-h", "--help", dest="help",
+                        action="store_true", default=False)
     parser.add_argument("-l", "--loglevel", dest="level",
                         choices=levels, default="WARNING")
     parser.add_argument("-w", "--work", dest="work", type=float, default=10.0)
@@ -513,6 +523,10 @@ async def main() -> int:
     parser.add_argument("-c", "--control", dest="control",
                         choices=["fascist", "friendly"])
     (options, _args) = parser.parse_known_args()
+
+    if options.help:
+        usage()
+        return 0
 
     logging.basicConfig(
         level=options.level,
@@ -538,8 +552,7 @@ async def main() -> int:
     return 0
 
 
-def usage(name: str) -> None:
-    print("Usage", name, file=sys.stderr)
+def usage() -> None:
     print(usage_text(), file=sys.stderr)
     sys.exit()
 
