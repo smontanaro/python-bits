@@ -435,7 +435,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             # idle for a(nother) minute, so extend
             self.idle_minutes += ONE_MINUTE
             if self.idle_minutes >= self.switch - self.start:
-                LOG.info("Long idle time - reset work interval")
+                LOG.debug("Long idle time - reset work interval")
                 self.work()
             else:
                 self.increment_bounds(ONE_MINUTE)
