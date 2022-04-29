@@ -456,8 +456,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.work()
             else:
                 self.increment_bounds(ONE_MINUTE)
-                LOG.info("add a minute to work interval, to %s",
-                         self.switch.time())
+                LOG.debug("add a minute to work interval, to %s",
+                          self.switch.time())
         elif now_ >= self.end:
             LOG.info("Long suspension - reset work interval")
             self.work()
