@@ -31,17 +31,17 @@ is XUbuntu running Xorg.
 
 """
 
+import argparse
 import asyncio
 import datetime
 import enum
-import getopt
 import logging
 import os
+import re
 import sys
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
-from typing import Tuple
 
 import dateutil.parser
 import pynput
@@ -184,8 +184,8 @@ class SuspendTracker:
 class Task(Frame):  # pylint: disable=too-many-ancestors
     "The base for the entire application"
 
-    def __init__(self, parent=None, work=WORK_TM, rest=REST_TM, fascist=True,
-                 debug=False) -> None:
+    def __init__(self, parent=None, work=WORK_TM, rest=REST_TM,
+                 control="fascist") -> None:
         """create the task widget and get things started"""
 
         Frame.__init__(*(self, parent))
@@ -215,7 +215,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
         # controlled by fascist/friendly radio buttons
         self.style = StringVar()
-        self.style.set("fascist" if fascist else "friendly")
+        self.style.set(control)
 
         # create main interactor window
 
@@ -281,7 +281,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         # user can't resize it
         self.cover.resizable(False, False)
         (w, h) = (self.winfo_screenwidth(), self.winfo_screenheight())
-        if debug:
+        if logging.getLevelName(LOG.level) == "DEBUG":
             # just a small window when debugging
             (w, h) = (w // 8, h // 8)
         self.cover.geometry(f"{w}x{h}+0+0")
@@ -360,8 +360,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.reset_tick_interval()
         self.set_work_bounds(now())
 
-        LOG.debug("work: state: %s now: %s end: %s",
-                  self.state.value, now().time(), self.switch.time())
+        LOG.info("work: state: %s now: %s end: %s",
+                 self.state.value, now().time(), self.switch.time())
 
     def rest(self) -> None:
         """overlay the screen with a window, preventing typing"""
@@ -370,8 +370,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.reset_tick_interval()
         self.set_rest_bounds(now())
 
-        LOG.debug("rest: state: %s now: %s then: %s",
-                  self.state.value, self.switch.time(), self.end.time())
+        LOG.info("rest: state: %s now: %s then: %s",
+                 self.state.value, self.switch.time(), self.end.time())
 
     def warn_work_end(self) -> None:
         """alert user that work period is almost up"""
@@ -435,14 +435,14 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             # idle for a(nother) minute, so extend
             self.idle_minutes += ONE_MINUTE
             if self.idle_minutes >= self.switch - self.start:
-                LOG.debug("Long idle time - reset work interval")
+                LOG.info("Long idle time - reset work interval")
                 self.work()
             else:
                 self.increment_bounds(ONE_MINUTE)
-                LOG.debug("add a minute to work interval, to %s",
-                          self.switch.time())
+                LOG.info("add a minute to work interval, to %s",
+                         self.switch.time())
         elif now_ >= self.end:
-            LOG.debug("Long suspension - reset work interval")
+            LOG.info("Long suspension - reset work interval")
             self.work()
         elif now_ >= self.switch:
             LOG.debug("time's up!")
@@ -455,8 +455,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         now_ = now()
         if self.last_input_time > now_ - 0.5 * ONE_SECOND:
             # extend the rest interval to make the user rest longer
-            LOG.debug("you cheated but I caught you! %s > %s",
-                      self.last_input_time.time(), self.switch.time())
+            LOG.info("you cheated but I caught you! %s > %s",
+                     self.last_input_time.time(), self.switch.time())
             # make the user pay for their transgression!
             self.end += 10 * ONE_SECOND
         elif self.last_input_time + rest_len < now_:
@@ -485,7 +485,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         "handle all keyboard & mouse activity"
         # don't care about the actual events, just update interrupt time
         if self.idle_minutes:
-            LOG.debug("reset idle minutes counter")
+            LOG.info("reset idle minutes counter")
             self.idle_minutes = ZERO_SECOND
         self.last_input_time = now()
         self.reset_tick_interval()
@@ -501,10 +501,21 @@ def epoch_seconds(dt):
     return (dt - START).total_seconds()
 
 
-async def main(args) -> int:
-    work, rest, geometry, fascist, debug = parse(args)
+async def main() -> int:
+    parser = argparse.ArgumentParser()
+    levels = set(a for a in dir(logging) if re.match("^[A-Z]+$", a))
+    levels.discard("NOTSET")
+    parser.add_argument("-l", "--loglevel", dest="level",
+                        choices=levels, default="WARNING")
+    parser.add_argument("-w", "--work", dest="work", type=float, default=10.0)
+    parser.add_argument("-r", "--rest", dest="rest", type=float, default=3.0)
+    parser.add_argument("-g", "--geometry", dest="geometry", default="")
+    parser.add_argument("-c", "--control", dest="control",
+                        choices=["fascist", "friendly"])
+    (options, _args) = parser.parse_known_args()
+
     logging.basicConfig(
-        level="DEBUG" if debug else "INFO",
+        level=options.level,
         style='{',
         format='{asctime} {levelname} {message}'
     )
@@ -512,9 +523,10 @@ async def main(args) -> int:
 
     app = AsyncTk()
     app.title("Typing Watcher")
-    if geometry:
-        app.geometry(geometry)
-    task = Task(parent=app, work=work, rest=rest, fascist=fascist, debug=debug)
+    if options.geometry:
+        app.geometry(options.geometry)
+    task = Task(parent=app, work=options.work, rest=options.rest,
+                control=options.control)
     task.pack()
 
     # Thanks to the python-list@python.org peeps for this bit of
@@ -536,43 +548,6 @@ def usage_text() -> str:
     return __doc__.format(**globals())
 
 
-def parse(args) -> Tuple[float, float, str, bool, bool]:
-    opts = getopt.getopt(args[1:], "dhw:r:g:f",
-                         ['debug', 'help', 'work=', 'rest=', 'geometry=',
-                          'friendly', 'fascist'])
-    options = opts[0]
-
-    # defaults
-    work = 10.0
-    rest = 3.0
-    geometry = ""
-    debug = False
-    fascist = True
-
-    for opt, val in options:
-        if opt in ['-h', '--help']:
-            usage(args[0])
-        elif opt in ['-d', '--debug']:
-            debug = True
-        elif opt in ['-w', '--work']:
-            work = float(val)
-        elif opt in ['-r', '--rest']:
-            rest = float(val)
-        elif opt in ['-g', '--geometry']:
-            geometry = val
-        elif opt == '-f':
-            fascist = not fascist
-        elif opt == '--friendly':
-            fascist = False
-        elif opt == '--fascist':
-            fascist = True
-
-    if rest > work:
-        usage(args[0])
-
-    return (work, rest, geometry, fascist, debug)
-
-
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv))
+    asyncio.run(main())
     sys.exit()
