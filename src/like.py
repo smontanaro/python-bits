@@ -98,7 +98,7 @@ def main(args):
         usage(msg)
         return 1
 
-    for opt, arg in opts:
+    for opt, _arg in opts:
         if opt == "-h":
             usage()
             return 0
@@ -106,7 +106,7 @@ def main(args):
     results = set()
     for directory in os.environ.get("PATH", "").split(":"):
         for prog in args:
-            for path in glob.glob(os.path.join(directory, "*%s*" % prog)):
+            for path in glob.glob(os.path.join(directory, f"*{prog}*")):
                 if executable(path):
                     results.add(path)
     # Check for shell functions.
@@ -120,6 +120,9 @@ def main(args):
 
     for prog in results:
         print(prog)
+
+    return 0
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
