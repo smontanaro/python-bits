@@ -38,6 +38,7 @@ man : $(MAN_FILES)
 .PHONY: lint
 lint : FORCE
 	pylint $(SRC_SCRIPTS)
+	MYPYPATH=typeshed mypy $(SRC_SCRIPTS)
 
 $(BINDIR)/% : $(SRCDIR)/%.py
 	mkdir -p $(BINDIR)
