@@ -36,7 +36,9 @@ import enum
 import logging
 import os
 import re
+import subprocess               # nosec
 import sys
+import tempfile
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
@@ -44,7 +46,7 @@ from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
 import dateutil.parser
 import pynput
 
-SUSP_FILE = "/tmp/suspensions"
+SUSP_FILE = os.path.join(tempfile.gettempdir(), "suspensions")
 
 START = datetime.datetime.now(tz=datetime.timezone.utc)
 EPOCH = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
@@ -522,11 +524,15 @@ async def main() -> int:
     parser.add_argument("-g", "--geometry", dest="geometry", default="")
     parser.add_argument("-c", "--control", dest="control",
                         choices=["fascist", "friendly"])
-    (options, _args) = parser.parse_known_args()
+    (options, args) = parser.parse_known_args()
 
     if options.help:
         usage()
         return 0
+
+    if args:
+        usage(f"extra arguments on command line: {args!r}")
+        return 1
 
     logging.basicConfig(
         level=options.level,
@@ -546,13 +552,17 @@ async def main() -> int:
     # Thanks to the python-list@python.org peeps for this bit of
     # window manager magic, esp Cameron Simpson.
     app.wait_visibility()
-    os.system("wmctrl -r 'Typing Watcher' -b add,sticky")
+    subprocess.run(["/usr/bin/wmctrl", "-r", "'Typing Watcher'", # nosec
+                    "-b", "add,sticky"])
 
     await app.run()
     return 0
 
 
-def usage() -> None:
+def usage(msg="") -> None:
+    if msg:
+        print(msg, file=sys.stderr)
+        print(file=sys.stderr)
     print(usage_text(), file=sys.stderr)
     sys.exit()
 
