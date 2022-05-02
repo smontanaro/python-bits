@@ -36,7 +36,6 @@ import enum
 import logging
 import os
 import re
-import subprocess               # nosec
 import sys
 import tempfile
 import time
@@ -552,8 +551,7 @@ async def main() -> int:
     # Thanks to the python-list@python.org peeps for this bit of
     # window manager magic, esp Cameron Simpson.
     app.wait_visibility()
-    subprocess.run(["/usr/bin/wmctrl", "-r", "'Typing Watcher'", # nosec
-                    "-b", "add,sticky"])
+    os.system("/usr/bin/wmctrl -r 'Typing Watcher' -b add,sticky") # nosec
 
     await app.run()
     return 0
