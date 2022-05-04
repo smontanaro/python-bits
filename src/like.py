@@ -110,7 +110,7 @@ def main(args):
                 if executable(path):
                     results.add(path)
     # Check for shell functions.
-    for line in os.popen("bash -ci 'declare -F'"):
+    for line in os.popen("/bin/bash -ci 'declare -F'"): # nosec
         func = line.strip().split()[-1]
         for prog in args:
             if prog in func:
