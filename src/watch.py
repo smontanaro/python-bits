@@ -62,8 +62,6 @@ PROG = os.path.split(sys.argv[0])[-1]
 NORMAL = "grey75"
 ALERT = "yellow"
 
-TK_SENTINEL_INT = -99999999
-
 
 class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """Progress meter widget.
@@ -81,6 +79,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
 
     def __init__(self, master=None, **kw) -> None:
         self.log = logging.getLogger(__name__)
+        self.verbose = kw.get("verbose", False)
         self.min = 0
         self.max = 100
         if "min" in kw:
@@ -89,6 +88,8 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         if "max" in kw:
             self.max = kw['max']
             del kw['max']
+        if "verbose" in kw:
+            del kw["verbose"]
 
         if "width" not in kw:
             kw['width'] = 100
@@ -97,21 +98,25 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         if "background" not in kw:
             kw['background'] = "black"
 
-        self.rect = TK_SENTINEL_INT
         Canvas.__init__(*(self, master), **kw)
+        self.rect = self.create_rectangle(
+            0, 0, kw["width"], kw["height"], outline=NORMAL, fill=NORMAL)
 
     def set_range(self, mn: int, mx: int) -> None:
         self.min = mn
         self.max = mx
 
     def set(self, value: int) -> None:
-        if self.rect != TK_SENTINEL_INT:
-            self.delete(self.rect)
+        if self.verbose:
+            self.log.debug("min: %s, val: %s, max: %s", self.min, value, self.max)
+        self.delete(self.rect)
         metheight = int(self.cget("height")) + 1
         canwidth = int(self.cget("width"))
         metwidth = canwidth * (value - self.min) / (self.max - self.min)
         self.rect = self.create_rectangle(
             0, 0, metwidth, metheight, outline="red", fill="red")
+        if self.verbose:
+            self.log.debug("meter width: %s, meter height: %s", metwidth, metheight)
         self.update()
 
     def reset(self) -> None:
@@ -358,18 +363,19 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def refresh_display(self):
         "adjust UI bits"
         start, switch, end, now_ = self.dt_to_int()
-
+        LOG.debug("start: %s, switch: %s, end: %s, now: %s",
+                  start, switch, end, now_)
         self.workmeter.set_range(start, switch)
         self.restmeter.set_range(switch, end)
 
         if self.state == wstate.WORKING:
-            self.cover.withdraw()
+            self.workmeter.set(now_)
+            self.restmeter.set(switch)
             if self.switch - now() > ONE_MINUTE:
                 self.warned = False
             if not self.warned:
                 self.set_background(NORMAL)
-            self.workmeter.set(now_)
-            self.restmeter.set(switch)
+            self.cover.withdraw()
         else:
             self.workmeter.set(switch)
             self.restmeter.set(now_)
@@ -380,6 +386,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 self.cancel_button.pack_forget()
             self.cover.deiconify()
             self.cover.tkraise()
+        self.update()
 
     def update_restnote(self):
         "update message to reflect rest time remaining"
@@ -484,9 +491,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                 LOG.debug("Long idle time - reset work interval")
                 self.work()
             else:
-                self.increment_bounds(ONE_MINUTE)
-                LOG.debug("add a minute to work interval, to %s",
-                          self.switch.time())
+                LOG.debug("extend work interval by %s", self.idle_minutes)
+                self.increment_bounds(self.idle_minutes)
         elif now_ >= self.end:
             LOG.info("Long suspension - reset work interval")
             self.work()
