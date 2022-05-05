@@ -35,6 +35,7 @@ import datetime
 import enum
 import logging
 import os
+import random
 import re
 import sys
 import tempfile
@@ -217,6 +218,12 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.style = StringVar()
         self.style.set(control)
 
+        # Probability that we will agree to cancel a rest period.
+        self.friendly_prob = 0.0
+
+        # Override message when resting
+        self.override_msg = ""
+
         # create main interactor window
 
         # progess of current work interval
@@ -275,7 +282,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.restmeter = Meter(f, background=NORMAL, height=10, width=200)
         self.restnote.pack(pady=2)
         self.restmeter.pack(fill="x", expand=1, pady=2)
-        self.cancel_button = Button(f, text="Cancel Rest", command=self.work)
+        self.cancel_button = Button(f, text="Cancel Rest", command=self.cancel_rest)
         f.pack()
 
         # start the ball rolling
@@ -283,6 +290,24 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
         # check status every now and then
         self.after(self.tick_int, self.tick)
+
+    def cancel_rest(self):
+        "cancel rest in friendly mode, but get more assertive over time"
+        if self.friendly_prob == 0.0:
+            self.friendly_prob = 0.05
+        else:
+            self.friendly_prob = min(0.75, self.friendly_prob * 1.3)
+        LOG.debug("friendly prob: %s", self.friendly_prob)
+
+        if random.random() < self.friendly_prob: # nosec
+            LOG.debug("Sorry Charlie! Going fascist. This is for your own good...")
+            self.override_msg = "Sorry Dave. I can't do that."
+            self.restnote.configure(text=self.override_msg)
+            self.style.set("fascist")
+            self.cancel_button.pack_forget()
+            self.after(5000, lambda: setattr(self, "override_msg", ""))
+        else:
+            self.work()
 
     def create_friendly_control(self):
         "fascist/friendly control"
@@ -358,10 +383,13 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
 
     def update_restnote(self):
         "update message to reflect rest time remaining"
-        timeleft = int(round((self.end - now()).total_seconds()))
-        minleft = timeleft // 60
-        secleft = timeleft % 60
-        msg = f"Rest for {minleft}m{secleft:02d}s please..."
+        if self.override_msg:
+            msg = self.override_msg
+        else:
+            timeleft = int(round((self.end - now()).total_seconds()))
+            minleft = timeleft // 60
+            secleft = timeleft % 60
+            msg = f"Rest for {minleft}m{secleft:02d}s please..."
         self.restnote.configure(text=msg)
 
     def update_durations(self, _dummy=None) -> None:
@@ -479,6 +507,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.end += 10 * ONE_SECOND
         elif self.last_input_time + rest_len < now_:
             LOG.debug("thanks for resting, you can work again.")
+            if self.style.get() == "fascist" and self.friendly_prob > 0.25:
+                self.friendly_prob = 0.05
+                self.style.set("friendly")
             self.work()
 
     def set_work_bounds(self, dt: datetime.datetime) -> None:
