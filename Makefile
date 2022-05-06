@@ -1,4 +1,5 @@
 PY_SCRIPTS = like.py watch.py
+MODULES = suspendtracker.py
 RST_FILES =
 
 SCRIPTS = $(PY_SCRIPTS)
@@ -15,7 +16,6 @@ VERSION = 1.0
 # Little, if anything, below here should need to be changed.
 
 SCRIPTS = $(PY_SCRIPTS)
-
 BINDIR = bin
 SRCDIR = src
 MANDIR = share/man/man1
@@ -23,6 +23,7 @@ RSTDIR = share/man/rst1
 
 BIN_SCRIPTS = $(foreach s,$(SCRIPTS),$(BINDIR)/$(basename $(s)))
 SRC_SCRIPTS = $(foreach s,$(SCRIPTS),$(SRCDIR)/$(s))
+SRC_MODULES = $(foreach s,$(MODULES),$(SRCDIR)/$(s))
 MAN_FILES = $(foreach s,$(SCRIPTS),$(MANDIR)/$(basename $(s)).1) \
 	$(foreach s,$(RST_FILES),$(MANDIR)/$(basename $(s)).1)
 
@@ -37,9 +38,9 @@ man : $(MAN_FILES)
 
 .PHONY: lint
 lint : FORCE
-	-pylint $(SRC_SCRIPTS)
-	-MYPYPATH=typeshed mypy $(SRC_SCRIPTS)
-	-bandit $(SRC_SCRIPTS)
+	-pylint $(SRC_SCRIPTS) $(SRC_MODULES)
+	-MYPYPATH=typeshed mypy $(SRC_SCRIPTS) $(SRC_MODULES)
+	-bandit $(SRC_SCRIPTS) $(SRC_MODULES)
 
 $(BINDIR)/% : $(SRCDIR)/%.py
 	mkdir -p $(BINDIR)
