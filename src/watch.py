@@ -78,7 +78,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
     """
 
     def __init__(self, master=None, **kw) -> None:
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger()
         self.verbose = kw.get("verbose", False)
         self.min = 0
         self.max = 100
@@ -123,7 +123,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         self.set(self.min)
 
 
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 CHK_INT = 100                   # milliseconds
 
@@ -357,7 +357,8 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         start = 0
         switch = int((self.switch - self.start).total_seconds())
         end = int((self.end - self.start).total_seconds())
-        now_ = int((now() - self.start).total_seconds())
+        # prevent now_ from going negative (right after a rest period)
+        now_ = max(0, int((now() - self.start).total_seconds()))
         return (start, switch, end, now_)
 
     def refresh_display(self):
@@ -409,8 +410,14 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def work(self) -> None:
         """start the work period"""
         if self.state != wstate.WORKING:
-            LOG.info("work: state: %s now: %s end: %s",
-                     self.state.value, now().time(), self.switch.time())
+            LOG.info("work: state: %s start: %s now: %s switch: %s end: %s",
+                     self.state.value, self.start.time(), now().time(),
+                     self.switch.time(), self.end.time())
+
+        # keep these two from carrying over from the rest period
+        self.idle_minutes = ZERO_SECOND
+        self.last_input_time = now()
+
         self.state = wstate.WORKING
         self.warned = False
         self.reset_tick_interval()
@@ -419,8 +426,9 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
     def rest(self) -> None:
         """overlay the screen with a window, preventing typing"""
         if self.state != wstate.RESTING:
-            LOG.info("rest: state: %s now: %s then: %s",
-                     self.state.value, self.switch.time(), self.end.time())
+            LOG.info("rest: state: %s start: %s switch: %s now: %s end: %s",
+                     self.state.value, self.start.time(), self.switch.time(),
+                     now().time(), self.end.time())
         self.state = wstate.RESTING
         self.warned = True
         self.reset_tick_interval()
@@ -511,7 +519,10 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
                      self.last_input_time.time(), self.switch.time())
             # make the user pay for their transgression!
             self.end += 10 * ONE_SECOND
-        elif self.last_input_time + rest_len < now_:
+        # make the user rest for the entire rest interval, even if
+        # there is some idle time left over from the end of the work
+        # period.
+        elif now_ >= self.end:
             LOG.debug("thanks for resting, you can work again.")
             if self.style.get() == "fascist" and self.friendly_prob > 0.25:
                 self.friendly_prob = 0.05
