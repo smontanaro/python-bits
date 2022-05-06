@@ -38,18 +38,13 @@ import os
 import random
 import re
 import sys
-import tempfile
 import time
 from tkinter import (Canvas, Frame, StringVar, Label, Scale, Radiobutton,
                      Button, Tk, Toplevel, LEFT, HORIZONTAL, simpledialog)
 
-import dateutil.parser
 import pynput
 
-SUSP_FILE = os.path.join(tempfile.gettempdir(), "suspensions")
-
 START = datetime.datetime.now(tz=datetime.timezone.utc)
-EPOCH = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
 ONE_MINUTE = datetime.timedelta(seconds=60)
 ONE_SECOND = datetime.timedelta(seconds=1)
 ZERO_SECOND = datetime.timedelta(seconds=0)
@@ -103,10 +98,12 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
             0, 0, kw["width"], kw["height"], outline=NORMAL, fill=NORMAL)
 
     def set_range(self, mn: int, mx: int) -> None:
+        "define meter's boundaries"
         self.min = mn
         self.max = mx
 
     def set(self, value: int) -> None:
+        "set the meter's current value (and regenerate the meter's rectangle)"
         if self.verbose:
             self.log.debug("min: %s, val: %s, max: %s", self.min, value, self.max)
         self.delete(self.rect)
@@ -120,6 +117,7 @@ class Meter(Canvas):  # pylint: disable=too-many-ancestors
         self.update()
 
     def reset(self) -> None:
+        "start the meter over"
         self.set(self.min)
 
 
@@ -150,41 +148,12 @@ class AsyncTk(Tk):
             await asyncio.sleep(0.05)
 
     def stop(self):
+        "note desire to stop the event loop"
         self.running = False
 
     async def run(self):
+        "crank it all up"
         await asyncio.gather(*self.runners)
-
-
-class SuspendTracker:
-    "track most recent wakeup and suspension"
-    def __init__(self):
-        self.suspend = EPOCH
-        self.wake = datetime.datetime.now(tz=datetime.timezone.utc)
-        self.tell = 0
-
-    def add_event(self, what, dt):
-        "note most recent wake or suspend occurrence"
-        attr = "wake" if what == "post" else "suspend"
-        setattr(self, attr, dt)
-
-    def check_suspensions(self):
-        if self.tell == os.stat(SUSP_FILE).st_size:
-            return
-        with open(SUSP_FILE, "r", encoding="utf-8") as fobj:
-            fobj.seek(self.tell)
-            for line in fobj:
-                self.tell += len(line)
-                LOG.debug("tell: %s, suspension: %r", self.tell, line)
-                stamp, what, _action = line.strip().split()
-                self.add_event(what, dateutil.parser.parse(stamp))
-        LOG.debug("last sleep time: %s", self.last_sleep_length())
-
-    def last_wake(self):
-        return self.wake
-
-    def last_sleep_length(self):
-        return self.wake - self.suspend
 
 
 class Task(Frame):  # pylint: disable=too-many-ancestors
@@ -459,6 +428,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.tick_int = 1000
 
     def set_background(self, color) -> None:
+        "set watcher's background to *color* (a suitable string)"
         def set_bg(w, indent=0):
             for child in w.winfo_children():
                 child["background"] = color
@@ -467,6 +437,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         set_bg(self)
 
     def help_(self) -> None:
+        "display __doc__"
         d = simpledialog.SimpleDialog(
             self.parent,
             text=usage_text(),
@@ -490,6 +461,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
         self.after(self.tick_int, self.tick)
 
     def work_tick(self):
+        "process a tick while working"
         now_ = now()
 
         if now_ - self.last_input_time >= self.idle_minutes + ONE_MINUTE:
@@ -511,7 +483,7 @@ class Task(Frame):  # pylint: disable=too-many-ancestors
             self.warn_work_end()
 
     def rest_tick(self):
-        rest_len = ONE_MINUTE * self.rest_scl.get()
+        "process a tick while resting"
         now_ = now()
         if self.last_input_time > now_ - 0.5 * ONE_SECOND:
             # extend the rest interval to make the user rest longer
@@ -559,6 +531,7 @@ def epoch_seconds(dt):
 
 
 async def main() -> int:
+    "see __doc__"
     parser = argparse.ArgumentParser(add_help=False)
     levels = set(a for a in dir(logging) if re.match("^[A-Z]+$", a))
     levels.discard("NOTSET")
@@ -606,6 +579,7 @@ async def main() -> int:
 
 
 def usage(msg="") -> None:
+    "print user help"
     if msg:
         print(msg, file=sys.stderr)
         print(file=sys.stderr)
@@ -614,6 +588,7 @@ def usage(msg="") -> None:
 
 
 def usage_text() -> str:
+    "post-processed __doc__"
     return __doc__.format(**globals())
 
 
