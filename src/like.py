@@ -67,6 +67,7 @@ import sys
 PROG = os.path.split(sys.argv[0])[1]
 
 def executable(path):
+    "return True if path is executable"
     path = os.path.abspath(path)
     if not os.path.exists(path) or os.path.isdir(path):
         return False
@@ -86,12 +87,14 @@ def executable(path):
         statinfo.st_mode & 0o001)
 
 def usage(msg=None):
+    "help"
     if msg is not None:
         print(msg, file=sys.stderr)
         print(file=sys.stderr)
     print((__doc__.strip() % globals()), file=sys.stderr)
 
 def main(args):
+    "see __doc__"
     try:
         opts, args = getopt.getopt(args, "h")
     except getopt.GetoptError as msg:
