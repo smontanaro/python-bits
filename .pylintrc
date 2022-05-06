@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+
+msg-template={path}:{line}: [{msg_id}({symbol}), {obj}] {msg}
+
+disable=bad-continuation,invalid-name
